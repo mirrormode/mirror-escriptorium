@@ -132,6 +132,7 @@ export default Vue.extend({
         this.initAnnotations();
 
         this.isVKEnabled = this.$store.state.document.enabledVKs.indexOf(this.$store.state.document.id) != -1 || false;
+        this.$refs.diplomaticLines.addEventListener('copy', this.handleCopy);
     },
 
     methods: {
@@ -338,25 +339,28 @@ export default Vue.extend({
             this.$refs.diplomaticLines.querySelectorAll(':scope > br').forEach(n => n.remove());
 
             // Add lines until we have enough of them
+            // Pass line.pk to appendLine
             while (this.$refs.diplomaticLines.childElementCount < this.$store.state.lines.all.length) {
-                this.appendLine();
+                const index = this.$refs.diplomaticLines.childElementCount;
+                const line = this.$store.state.lines.all[index];
+                this.appendLine(null, line.pk);
             }
 
             // need to add/remove danger indicators
-            for (let i=0; i<this.$refs.diplomaticLines.childElementCount; i++) {
-                let line = this.$refs.diplomaticLines.querySelector('div:nth-child('+parseInt(i+1)+')');
-                if (line === null) {
-                    line.remove();
-                    continue;
-                }
-
-                if (i<this.$store.state.lines.all.length) {
+            for (let i = 0; i < this.$refs.diplomaticLines.childElementCount; i++) {
+                let line = this.$refs.diplomaticLines.children[i];
+                if (i < this.$store.state.lines.all.length) {
                     line.classList.remove('alert-danger');
                     line.setAttribute('title', '');
-                } else if (i>=this.$store.state.lines.all.length) {
-                    if (line.textContent == '') { // just remove empty lines
+                    // make sure existing lines have correct data-line-pk
+                    const expectedPk = this.$store.state.lines.all[i].pk;
+                    if (line.getAttribute('data-line-pk') !== String(expectedPk)) {
+                        line.setAttribute('data-line-pk', expectedPk);
+                    }
+                } else {
+                    if (line.textContent === '') {
                         line.remove();
-                    } else  {
+                    } else {
                         line.classList.add('alert-danger');
                         line.setAttribute('title', 'More lines than there is in the segmentation!');
                     }
@@ -618,6 +622,37 @@ export default Vue.extend({
             // Stop the data from actually being pasted //  without it will paste the native copied text after "content"
             e.stopPropagation();
             e.preventDefault();
+            this.constrainLineNumber();
+        },
+
+        /* handleCopy: custom copy handler that keeps empty lines in the copied text
+        - it prevents the default copy behavior then extracts the selected text
+        concatenates text content with newlines and sets it in the clipboard */
+        handleCopy(event) {
+            // prevent default copy behavior
+            event.preventDefault();
+
+            const selection = window.getSelection();
+            if (selection.rangeCount === 0) return; // if no selection, exit early
+
+            const range = selection.getRangeAt(0);
+            const fragment = range.cloneContents(); // copy selected content as a document fragment
+            let copiedText = '';
+
+            // iterate over each child node in the fragment
+            fragment.childNodes.forEach((node, index, array) => {
+                // if the node is a div with a data-line-pk attribute and its text is empty-> add a newline
+                if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'DIV' && node.hasAttribute('data-line-pk') && node.innerText.trim() === '') {
+                    copiedText += '\n';
+                }
+                else {
+                    // add the node text content and, if not the last node append a newline
+                    copiedText += node.textContent + (index === array.length - 1 ? '' : "\n");
+                }
+            });
+
+            // set the clipboard data with the custom copied text
+            event.clipboardData.setData('text/plain', copiedText);
         },
 
         showOverlay(ev) {
