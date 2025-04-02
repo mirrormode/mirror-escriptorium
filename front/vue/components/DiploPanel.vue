@@ -132,6 +132,7 @@ export default Vue.extend({
         this.initAnnotations();
 
         this.isVKEnabled = this.$store.state.document.enabledVKs.indexOf(this.$store.state.document.id) != -1 || false;
+        this.$refs.diplomaticLines.addEventListener('copy', this.handleCopy);
     },
 
     methods: {
@@ -622,6 +623,36 @@ export default Vue.extend({
             e.stopPropagation();
             e.preventDefault();
             this.constrainLineNumber();
+        },
+
+        /* handleCopy: custom copy handler that keeps empty lines in the copied text
+        - it prevents the default copy behavior then extracts the selected text
+        concatenates text content with newlines and sets it in the clipboard */
+        handleCopy(event) {
+            // prevent default copy behavior
+            event.preventDefault();
+
+            const selection = window.getSelection();
+            if (selection.rangeCount === 0) return; // if no selection, exit early
+
+            const range = selection.getRangeAt(0);
+            const fragment = range.cloneContents(); // copy selected content as a document fragment
+            let copiedText = '';
+
+            // iterate over each child node in the fragment
+            fragment.childNodes.forEach((node, index, array) => {
+                // if the node is a div with a data-line-pk attribute and its text is empty-> add a newline
+                if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'DIV' && node.hasAttribute('data-line-pk') && node.innerText.trim() === '') {
+                    copiedText += '\n';
+                }
+                else {
+                    // add the node text content and, if not the last node append a newline
+                    copiedText += node.textContent + (index === array.length - 1 ? '' : "\n");
+                }
+            });
+
+            // set the clipboard data with the custom copied text
+            event.clipboardData.setData('text/plain', copiedText);
         },
 
         showOverlay(ev) {
