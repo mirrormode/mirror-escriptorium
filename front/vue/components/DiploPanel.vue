@@ -338,25 +338,28 @@ export default Vue.extend({
             this.$refs.diplomaticLines.querySelectorAll(':scope > br').forEach(n => n.remove());
 
             // Add lines until we have enough of them
+            // Pass line.pk to appendLine
             while (this.$refs.diplomaticLines.childElementCount < this.$store.state.lines.all.length) {
-                this.appendLine();
+                const index = this.$refs.diplomaticLines.childElementCount;
+                const line = this.$store.state.lines.all[index];
+                this.appendLine(null, line.pk);
             }
 
             // need to add/remove danger indicators
-            for (let i=0; i<this.$refs.diplomaticLines.childElementCount; i++) {
-                let line = this.$refs.diplomaticLines.querySelector('div:nth-child('+parseInt(i+1)+')');
-                if (line === null) {
-                    line.remove();
-                    continue;
-                }
-
-                if (i<this.$store.state.lines.all.length) {
+            for (let i = 0; i < this.$refs.diplomaticLines.childElementCount; i++) {
+                let line = this.$refs.diplomaticLines.children[i];
+                if (i < this.$store.state.lines.all.length) {
                     line.classList.remove('alert-danger');
                     line.setAttribute('title', '');
-                } else if (i>=this.$store.state.lines.all.length) {
-                    if (line.textContent == '') { // just remove empty lines
+                    // make sure existing lines have correct data-line-pk
+                    const expectedPk = this.$store.state.lines.all[i].pk;
+                    if (line.getAttribute('data-line-pk') !== String(expectedPk)) {
+                        line.setAttribute('data-line-pk', expectedPk);
+                    }
+                } else {
+                    if (line.textContent === '') {
                         line.remove();
-                    } else  {
+                    } else {
                         line.classList.add('alert-danger');
                         line.setAttribute('title', 'More lines than there is in the segmentation!');
                     }
@@ -618,6 +621,7 @@ export default Vue.extend({
             // Stop the data from actually being pasted //  without it will paste the native copied text after "content"
             e.stopPropagation();
             e.preventDefault();
+            this.constrainLineNumber();
         },
 
         showOverlay(ev) {
