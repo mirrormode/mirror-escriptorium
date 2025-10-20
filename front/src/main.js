@@ -39,3 +39,5 @@ window.bootModels = bootModels;
 
 import { bootAlignForm } from './align_form.js';
 window.bootAlignForm = bootAlignForm;
+
+import './performance-tracking.js';
