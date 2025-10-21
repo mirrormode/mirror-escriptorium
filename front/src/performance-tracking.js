@@ -1,6 +1,6 @@
 window.addEventListener('load', () => {
     const [entry] = performance.getEntriesByType("navigation");
-    const loadTime = entry.loadEventEnd - entry.startTime;
+    const loadTime = entry.duration;
 
     // Send to your server anonymously
     fetch('https://colaf.huma-num.fr/timing-tracking/log', {
