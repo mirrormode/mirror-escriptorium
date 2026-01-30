@@ -35,7 +35,6 @@ from elasticsearch import exceptions as es_exceptions
 
 from core.forms import (
     AlignForm,
-    BinarizeForm,
     DocumentForm,
     DocumentOntologyForm,
     DocumentShareForm,
@@ -256,6 +255,7 @@ class Search(BaseSearch):
 class FindAndReplace(BaseSearch):
     form_class = FindAndReplaceForm
     template_name = 'core/search/find_and_replace.html'
+    paginate_by = 5
 
     def get_part_image_thumbnail(self, part_image):
         thumbnailer = get_thumbnailer(part_image)
@@ -668,7 +668,6 @@ class DocumentImages(LoginRequiredMixin, DocumentMixin, DetailView):
         context['upload_form'] = UploadImageForm(document=self.object, user=self.request.user)
 
         # process forms
-        context['binarize_form'] = BinarizeForm(self.object, self.request.user)
         context['segment_form'] = SegmentForm(self.object, self.request.user)
         context['transcribe_form'] = TranscribeForm(self.object, self.request.user)
         context['align_form'] = AlignForm(self.object, self.request.user)
@@ -790,9 +789,7 @@ class DocumentPartsProcessAjax(LoginRequiredMixin, View):
                                 status=404, content_type="application/json")
 
         task = self.request.POST.get('task')
-        if task == 'binarize':
-            form_class = BinarizeForm
-        elif task == 'segment':
+        if task == 'segment':
             form_class = SegmentForm
         elif task == 'transcribe':
             form_class = TranscribeForm
@@ -820,8 +817,19 @@ class DocumentPartsProcessAjax(LoginRequiredMixin, View):
                                 content_type="application/json", status=400)
 
 
-class DocumentDetail(DetailView):
+class DocumentDashboard(LoginRequiredMixin, DetailView):
     model = Document
+    template_name = "core/document_dashboard.html"
+
+    def get_queryset(self):
+        return Document.objects.for_user(self.request.user)
+
+    def get_context_data(self, **kwargs):
+        context_data = super().get_context_data(**kwargs)
+        context_data.update({
+            "document_id": self.get_object().pk
+        })
+        return context_data
 
 
 class EditPart(LoginRequiredMixin, DetailView):

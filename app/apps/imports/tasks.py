@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True)
-def document_import(task, import_pk=None, resume=True, task_id=None, user_pk=None, report_label=None):
+def document_import(task, document_pk=None, import_pk=None,
+                    resume=True, task_id=None, user_pk=None,
+                    task_group_pk=None, report_label=None, **kwargs):
     DocumentImport = apps.get_model('imports', 'DocumentImport')
     TaskReport = apps.get_model('reporting', 'TaskReport')
     User = apps.get_model('users', 'User')
@@ -76,8 +78,9 @@ def document_import(task, import_pk=None, resume=True, task_id=None, user_pk=Non
 
 @shared_task(bind=True)
 def document_export(task, file_format, part_pks,
-                    transcription_pk, region_types, document_pk=None, include_images=False,
-                    user_pk=None, report_label=None):
+                    transcription_pk, region_types, document_pk=None,
+                    include_images=False, include_characters=False,
+                    user_pk=None, report_label=None, task_group_pk=None, **kwargs):
     User = apps.get_model('users', 'User')
     Document = apps.get_model('core', 'Document')
     Transcription = apps.get_model('core', 'Transcription')
@@ -90,7 +93,12 @@ def document_export(task, file_format, part_pks,
         assert user.has_free_cpu_minutes(), f"User {user.id} doesn't have any CPU minutes left"
 
     document = Document.objects.get(pk=document_pk)
-    report = TaskReport.objects.get(task_id=task.request.id)
+    try:
+        report = TaskReport.objects.get(task_id=task.request.id)
+    except TaskReport.MultipleObjectsReturned:
+        report = TaskReport.objects.filter(task_id=task.request.id).order_by('-started_at').first()
+    except TaskReport.DoesNotExist:
+        report = None
 
     try:
         send_event('document', document.pk, "export:start", {
@@ -102,7 +110,9 @@ def document_export(task, file_format, part_pks,
 
         transcription = Transcription.objects.get(document=document, pk=transcription_pk)
         exporter = ENABLED_EXPORTERS[file_format]["class"](
-            part_pks, region_types, include_images, user, document, report, transcription
+            part_pks, region_types,
+            include_images, include_characters,
+            user, document, report, transcription
         )
         exporter.render()
     except Exception as e:

@@ -1,4 +1,9 @@
-import { retrieveCurrentUser, retrieveGroups } from "../../../src/api";
+import axios from "axios";
+import {
+    retrieveCurrentUser,
+    retrieveGroups,
+    retrieveModels,
+} from "../../../src/api";
 
 // initial state
 const state = () => ({
@@ -20,6 +25,8 @@ const state = () => ({
      */
     groups: [],
     isStaff: false,
+    segmentationModels: [],
+    recognitionModels: [],
     username: "",
 });
 
@@ -43,6 +50,38 @@ const actions = {
             commit("setGroups", data.results);
         }
     },
+    /**
+     * Fetch segmentation models the user has access to.
+     */
+    async fetchSegmentModels({ commit }) {
+        let models = [];
+        const { data } = await retrieveModels("segment");
+        if (!data?.results) throw new Error("Unable to retrieve segmentation models");
+        models = data.results;
+        let nextPage = data.next;
+        while (nextPage) {
+            const res = await axios.get(nextPage);
+            nextPage = res.data.next;
+            models = [...models, ...res.data.results];
+        }
+        commit("setSegmentationModels", models);
+    },
+    /**
+     * Fetch recognition models the user has access to.
+     */
+    async fetchRecognizeModels({ commit }) {
+        let models = [];
+        const { data } = await retrieveModels("recognize");
+        if (!data?.results) throw new Error("Unable to retrieve recognition models");
+        models = data.results;
+        let nextPage = data.next;
+        while (nextPage) {
+            const res = await axios.get(nextPage);
+            nextPage = res.data.next;
+            models = [...models, ...res.data.results];
+        }
+        commit("setRecognitionModels", models);
+    },
 };
 
 const mutations = {
@@ -57,6 +96,12 @@ const mutations = {
     },
     setIsStaff(state, isStaff) {
         state.isStaff = isStaff;
+    },
+    setRecognitionModels(state, models) {
+        state.recognitionModels = models;
+    },
+    setSegmentationModels(state, models) {
+        state.segmentationModels = models;
     },
     setUsername(state, username) {
         state.username = username;

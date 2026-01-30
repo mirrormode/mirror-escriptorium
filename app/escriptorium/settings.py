@@ -10,12 +10,12 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/2.1/ref/settings/
 """
 
+import importlib.metadata
 import os
 import sys
 
 from django.utils.translation import gettext_lazy as _
 from kombu import Queue
-from pkg_resources import get_distribution
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -37,12 +37,14 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'a-beautiful-snowflake')
 
 # SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', False) == 'True'  # should be done by  nginx
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-USE_X_FORWARDED_HOST = os.getenv('USE_X_FORWARDED_HOST', False) == 'True'
+USE_X_FORWARDED_HOST = os.getenv('USE_X_FORWARDED_HOST', 'False').lower() == 'true'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', False)
 
-CUSTOM_HOME = os.getenv('CUSTOM_HOME', False) == 'True'
+CUSTOM_HOME = os.getenv('CUSTOM_HOME', 'False').lower() == 'true'
+
+CUSTOM_CONTRIBUTORS = os.getenv('CUSTOM_CONTRIBUTORS', 'False').lower() == 'true'
 
 ALLOWED_HOSTS = ['*']
 
@@ -77,6 +79,7 @@ INSTALLED_APPS = [
     'language_flags',
     'reporting',
     'django_prometheus',
+    'solo',
 ]
 
 MIDDLEWARE = [
@@ -90,6 +93,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django_prometheus.middleware.PrometheusAfterMiddleware',
+    'escriptorium.middleware.AccountExpiryMiddleware',
 ]
 
 PROMETHEUS_EXPORT_MIGRATIONS = False
@@ -100,7 +104,8 @@ TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [os.path.join(PROJECT_ROOT, 'templates'),
-                 os.path.join(BASE_DIR, 'homepage')],  # custom homepage dir (volume in docker)
+                 os.path.join(BASE_DIR, 'homepage'),  # custom homepage dir (volume in docker)
+                 os.path.join(BASE_DIR, 'contributors')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -110,8 +115,12 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'escriptorium.context_processors.enable_cookie_consent',
                 'escriptorium.context_processors.custom_homepage',
+                'escriptorium.context_processors.custom_contributors',
                 'escriptorium.context_processors.disable_search',
                 'escriptorium.context_processors.enable_text_alignment',
+                'escriptorium.context_processors.enable_markdown_export',
+                'escriptorium.context_processors.enable_tei_export',
+                'escriptorium.context_processors.models_version_retention',
             ],
         },
     },
@@ -140,6 +149,12 @@ DATABASES = {
         'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'postgres'),
         'HOST': os.getenv('SQL_HOST', 'localhost'),
         'PORT': os.getenv('SQL_PORT', '5432'),
+        "OPTIONS": {
+            # This is required as jit seems to be buggy
+            # and maybe even have memory leak for multiple-layered joined queries
+            # the document fetching query performs extremely poorly with it enabled.
+            "options": "-c jit=off",
+        }
     }
 }
 
@@ -210,6 +225,8 @@ CELERY_RESULT_BACKEND = 'redis://%s:%d' % (REDIS_HOST, REDIS_PORT)
 CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TASK_TRACK_STARTED = True
+CELERYD_STATE_DB = "celery_state.db"
 CELERY_ACKS_LATE = True
 
 # time in seconds a user has to wait after a task is started before being able to recover
@@ -267,12 +284,16 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 STATICFILES_DIRS = [
     os.path.join(PROJECT_ROOT, 'static'),
     os.path.join(BASE_DIR, 'homepage'),
+    os.path.join(BASE_DIR, 'contributors'),
     FRONTEND_DIR
 ]
 
 if CUSTOM_HOME:
     # custom homepage directory
     STATICFILES_DIRS.append(os.path.join(BASE_DIR, 'homepage'))
+if CUSTOM_CONTRIBUTORS:
+    # custom contributors directory
+    STATICFILES_DIRS.append(os.path.join(BASE_DIR, 'contributors'))
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
@@ -326,6 +347,10 @@ LOGGING = {
         }
     },
     'loggers': {
+        '': {
+            'handlers': ['console_debug'],
+            'propagate': True,
+        },
         'kraken': {
             'handlers': ['console', 'mail_admins'],
             'propagate': True,
@@ -387,7 +412,11 @@ ENABLE_COOKIE_CONSENT = os.getenv('ENABLE_COOKIE_CONSENT', True)
 VERSIONING_DEFAULT_SOURCE = 'eScriptorium'
 
 VERSION_DATE = os.getenv('VERSION_DATE', '<development>')
-KRAKEN_VERSION = 'Kraken version ' + get_distribution('kraken').version
+KRAKEN_VERSION = 'Kraken version ' + importlib.metadata.version('kraken')
+
+# Numbers of days to retain all epochs of models before the management command can clean them up.
+# 0 means nothing will be deleted even if the cron runs.
+MODELS_VERSION_RETENTION = int(os.getenv('MODELS_VERSION_RETENTION', 30))
 
 IIIF_IMPORT_QUALITY = 'full'
 
@@ -410,13 +439,6 @@ REST_FRAMEWORK = {
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
 
-if 'test' in sys.argv:
-    try:
-        from .test_settings import *  # noqa F401
-    except (ModuleNotFoundError, ImportError):
-        pass
-
-CPU_COST_FACTOR = os.getenv('CPU_COST_FACTOR', 1.0)
 GPU_COST = os.getenv('GPU_COST', 1.0)
 
 # Boolean used to defuse quotas enforcement
@@ -443,8 +465,14 @@ EXPORT_OPENITI_MARKDOWN_ENABLED = os.getenv('EXPORT_OPENITI_MARKDOWN', "False").
 # Boolean used to enable the OpenITI TEI XML export mode
 EXPORT_TEI_XML_ENABLED = os.getenv('EXPORT_TEI_XML', "False").lower() not in ("false", "0")
 
+# catch-all exceptions, add them to report and skip the erroring files
+# set to True in a dev environment
+EXPORT_STRICT = False
+
 # Boolean used to enable text alignment with Passim
 TEXT_ALIGNMENT_ENABLED = os.getenv('TEXT_ALIGNMENT', "False").lower() not in ("false", "0")
+
+IMPORT_ALLOWED_DOMAINS = os.getenv('IMPORT_ALLOWED_DOMAINS', '*').split(',')
 
 # Sentry support
 SENTRY_DSN = os.getenv('SENTRY_DSN')
@@ -468,4 +496,9 @@ if SENTRY_DSN:
         ],
     )
 
-IMPORT_ALLOWED_DOMAINS = os.getenv('IMPORT_ALLOWED_DOMAINS', '*').split(',')
+# this needs to be on the bottom so that test configuration can override anything else
+if 'test' in sys.argv:
+    try:
+        from .test_settings import *  # noqa F401
+    except (ModuleNotFoundError, ImportError):
+        pass

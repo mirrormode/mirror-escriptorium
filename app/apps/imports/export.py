@@ -37,6 +37,7 @@ class BaseExporter:
         part_pks,
         region_types,
         include_images,
+        include_characters,
         user,
         document,
         report,
@@ -45,6 +46,7 @@ class BaseExporter:
         self.part_pks = part_pks
         self.region_types = region_types
         self.include_images = include_images
+        self.include_characters = include_characters
         self.user = user
         self.document = document
         self.report = report
@@ -57,7 +59,7 @@ class BaseExporter:
             self.document.pk,
             slugify(self.document.name).replace("-", "_")[:32],
             self.file_format,
-            datetime.now().strftime("%Y%m%d%H%M"),
+            datetime.now().strftime("%Y%m%d%H%M%S"),
         )
         assert hasattr(
             self, "file_extension"
@@ -79,14 +81,23 @@ class TextExporter(BaseExporter):
                 transcription=self.transcription,
                 line__document_part__pk__in=self.part_pks,
             )
+            .select_related("line__document_part")
             .filter(region_filters)
             .exclude(content="")
             .order_by(
                 "line__document_part", "line__document_part__order", "line__order"
             )
         )
+        docid = None
         with open(self.filepath, "w") as fh:
-            fh.writelines(["%s\n" % line.content for line in lines])
+            for trans in lines:
+                if trans.line.document_part.pk != docid:
+                    fh.write("--------------- %s (%s) ---------------\n" % (
+                        trans.line.document_part.title,
+                        trans.line.document_part.filename
+                    ))
+                    docid = trans.line.document_part.pk
+                fh.write("%s\n" % trans.content)
             fh.close()
 
 
@@ -133,6 +144,7 @@ class XMLTemplateExporter(BaseExporter):
                     Line = apps.get_model("core", "Line")
                     page = tplt.render(
                         {
+                            "include_characters": self.include_characters,
                             "valid_block_types": self.document.valid_block_types.all(),
                             "valid_line_types": self.document.valid_line_types.all(),
                             "part": part,
@@ -160,6 +172,8 @@ class XMLTemplateExporter(BaseExporter):
                             element=part.name, image=part.filename, reason=str(e)
                         )
                     )
+                    if settings.EXPORT_STRICT:
+                        raise e
                 else:
                     filename = "%s.xml" % os.path.splitext(part.filename)[0]
                     zip_.writestr(filename, page)

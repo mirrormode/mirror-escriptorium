@@ -123,7 +123,7 @@ class METSProcessor:
         if not page_dmd_id:
             return metadata
 
-        mods_sec = self.mets_xml.find(f'mets:dmdSec[@ID="{page_dmd_id}"]/mets:mdWrap/mets:xmlData/mods:mods', namespaces=self.NAMESPACES)
+        mods_sec = self.mets_xml.find(f'mets:dmdSec[@ID="{page_dmd_id}"]/mets:mdWrap/mets:xmlData/mods:mods', namespaces=self.NAMESPACES)  # noqa: E231
         if mods_sec is None:
             return metadata
 
@@ -167,7 +167,7 @@ class METSProcessor:
         try:
             file = self.retrieve_in_archive(href)
         except KeyError as e:
-            self.report.append(f"File not found in the provided archive: {e}", logger_fct=logger.error)
+            self.report.append(f"File not found in the provided archive: {e}", logger_fct=logger.error)  # noqa: E713
             return mets_page_image, mets_page_sources, layers_count
 
         try:
@@ -275,12 +275,11 @@ class METSProcessor:
 
         pages = self.get_pages_from_struct_map()
         for index, page in enumerate(pages, start=1):
-            self.report.append(f"Processing the page n°{index} from the provided METS file", logger_fct=logger.info)
             try:
                 mets_page = self.process_single_page(page, files)
             # Catch any exception so that we don't fail when only one page is in error
             except Exception as e:
-                self.report.append(f"An exception occurred while processing the page: {e}", logger_fct=logger.error)
+                self.report.append(f"An exception occurred while processing the page N°{index}: {e}", logger_fct=logger.error)
                 continue
 
             mets_pages.append(mets_page)

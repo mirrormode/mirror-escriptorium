@@ -25,11 +25,9 @@ export const retrieveDocumentsList = async ({
 export const retrieveDocument = async (documentId) =>
     await axios.get(`/documents/${documentId}/`);
 
-// retrieve types list for a specific transcription on a document
-export const retrieveTranscriptionOntology = async ({
+// retrieve types list for a document
+export const retrieveDocumentStats = async ({
     documentId,
-    transcriptionId,
-    category,
     sortField,
     sortDirection,
 }) => {
@@ -41,27 +39,92 @@ export const retrieveTranscriptionOntology = async ({
         });
     }
     return await axios.get(
-        `/documents/${documentId}/transcriptions/${transcriptionId}/types/${ontologyMap[
-            category
-        ]}/`,
+        `/documents/${documentId}/stats/`,
         { params },
     );
 };
 
+// retrieve default types list by category (regions, lines, parts)
+export const retrieveDefaultOntology = async (category) =>
+    await axios.get(`/${ontologyMap[category]}/`);
+
+// create, update, destroy ontology types
+export const createType = async (category, data) =>
+    await axios.post(`/${ontologyMap[category]}/`, data);
+
+export const createAnnotationType = async ({ documentId, target, data }) =>
+    await axios.post(
+        `/documents/${documentId}/taxonomies/annotations/?target=${target}`,
+        data,
+    );
+
+export const updateType = async (category, { typePk, ...data }) =>
+    await axios.patch(`/${ontologyMap[category]}/${typePk}/`, data);
+
+export const updateAnnotationType = async ({ documentId, typePk, data }) =>
+    await axios.patch(
+        `/documents/${documentId}/taxonomies/annotations/${typePk}/`,
+        data,
+    );
+
+export const deleteType = async (category, { typePk, ...data }) =>
+    await axios.delete(`/${ontologyMap[category]}/${typePk}/`, data);
+
+export const deleteAnnotationType = async ({ documentId, typePk }) =>
+    await axios.delete(
+        `/documents/${documentId}/taxonomies/annotations/${typePk}/`,
+    );
+
+export const updateDocumentOntology = async (documentId, data) =>
+    await axios.patch(`/documents/${documentId}/modify_ontology/`, data);
+
+// retrieve the taxonomies for annotation components
+export const retrieveComponentTaxonomies = async (documentId) =>
+    await axios.get(
+        `/documents/${documentId}/taxonomies/components/?paginate_by=50`,
+    );
+
+// retrieve the taxonomies for annotation components
+export const createComponentTaxonomy = async ({
+    documentId,
+    name,
+    allowedValues,
+}) =>
+    await axios.post(`/documents/${documentId}/taxonomies/components/`, {
+        name,
+        allowed_values: allowedValues || [],
+    });
+
+// update an annotation component
+export const updateComponentTaxonomy = async ({
+    documentId,
+    name,
+    allowedValues,
+    pk,
+}) =>
+    await axios.patch(`/documents/${documentId}/taxonomies/components/${pk}/`, {
+        name,
+        allowed_values: allowedValues || [],
+    });
+
+// delete an annotation component
+export const deleteComponentTaxonomy = async ({ documentId, pk }) =>
+    await axios.delete(`/documents/${documentId}/taxonomies/components/${pk}/`);
+
 // retrieve characters, sorted by character or frequency, for a specific transcription on a document
-export const retrieveTranscriptionCharacters = async ({
+export const retrieveTranscriptionStats = async ({
     documentId,
     transcriptionId,
     field,
     direction,
 }) => {
-    let params = {};
+    let ordering = "-frequency";
     if (field && direction) {
-        params.ordering = getSortParam({ field, direction });
+        ordering = getSortParam({ field, direction });
     }
     return await axios.get(
-        `/documents/${documentId}/transcriptions/${transcriptionId}/characters/`,
-        { params },
+        // eslint-disable-next-line max-len
+        `/documents/${documentId}/transcriptions/${transcriptionId}/stats/?ordering=${ordering}`,
     );
 };
 
@@ -75,15 +138,30 @@ export const retrieveTranscriptionCharCount = async ({
     );
 };
 
+export const updateTranscription = async ({
+    documentId,
+    transcriptionId,
+    name,
+    comments,
+}) =>
+    await axios.put(
+        `/documents/${documentId}/transcriptions/${transcriptionId}/`,
+        { name, comments },
+    );
+
 // retrieve document parts
 export const retrieveDocumentParts = async ({
     documentId,
     field,
     direction,
+    pageSize,
 }) => {
     let params = {};
     if (field && direction) {
         params.ordering = getSortParam({ field, direction });
+    }
+    if (pageSize) {
+        params.paginate_by = pageSize;
     }
     return await axios.get(`/documents/${documentId}/parts/`, { params });
 };
@@ -151,6 +229,15 @@ export const retrieveDocumentModels = async (documentId) =>
         },
     });
 
+const jobTypeIds = {
+    segment: 1,
+    recognize: 2,
+};
+
+// retrieve all models (by job type)
+export const retrieveModels = async (jobType) =>
+await axios.get("/models/", { params: { job: jobTypeIds[jobType], paginate_by: 30 } });
+
 // share this document with a group or user
 export const shareDocument = async ({ documentId, group, user }) =>
     await axios.post(`/documents/${documentId}/share/`, {
@@ -159,18 +246,34 @@ export const shareDocument = async ({ documentId, group, user }) =>
     });
 
 // queue the segmentation task for this document
-export const segmentDocument = async ({ documentId, override, model, steps }) =>
-    await axios.post(`/documents/${documentId}/segment/`, {
-        override,
-        model,
-        steps,
-    });
+export const segmentDocument = async ({
+    documentId,
+    override,
+    model,
+    steps,
+    parts,
+}) => {
+    const params = { steps, parts };
+    if (override) {
+        params["override"] = override;
+    }
+    if (model) {
+        params["model"] = model;
+    }
+    await axios.post(`/documents/${documentId}/segment/`, params);
+};
 
 // queue the transcription task for this document
-export const transcribeDocument = async ({ documentId, model, layerName }) =>
+export const transcribeDocument = async ({
+    documentId,
+    model,
+    transcription,
+    parts,
+}) =>
     await axios.post(`/documents/${documentId}/transcribe/`, {
         model,
-        name: layerName,
+        transcription,
+        parts,
     });
 
 // retrieve textual witnesses for use in alignment
@@ -192,21 +295,27 @@ export const alignDocument = async ({
     threshold,
     transcription,
     witnessFile,
+    parts,
 }) => {
     // need to use FormData to handle witness file upload
     const formData = new FormData();
-    formData.append("beam_size", beamSize);
-    formData.append("existing_witness", existingWitness);
+    if (beamSize) formData.append("beam_size", beamSize);
+    if (existingWitness) formData.append("existing_witness", existingWitness);
     formData.append("full_doc", fullDoc);
     formData.append("gap", gap);
     formData.append("layer_name", layerName);
-    formData.append("max_offset", maxOffset);
+    if (maxOffset) formData.append("max_offset", maxOffset);
     formData.append("merge", merge);
     formData.append("n_gram", ngram);
-    formData.append("region_types", regionTypes);
+    if (regionTypes?.length) {
+        regionTypes.forEach((type) => formData.append("region_types", type));
+    }
     formData.append("threshold", threshold);
     formData.append("transcription", transcription);
-    formData.append("witness_file", witnessFile);
+    if (witnessFile) formData.append("witness_file", witnessFile);
+    if (parts?.length) {
+        parts.forEach((part) => formData.append("parts", part));
+    }
     const headers = { "Content-Type": "multipart/form-data" };
     return await axios.post(`/documents/${documentId}/align/`, formData, {
         headers,
@@ -218,27 +327,39 @@ export const exportDocument = async ({
     documentId,
     fileFormat,
     includeImages,
+    includeCharacters,
     regionTypes,
     transcription,
+    parts,
 }) =>
     await axios.post(`/documents/${documentId}/export/`, {
         region_types: regionTypes,
         file_format: fileFormat,
         include_images: includeImages,
+        include_characters: includeCharacters,
         transcription,
+        parts,
     });
 
 // queue the import task for this document
-export const queueImport = async ({ documentId, params }) =>
-    await axios.post(`/documents/${documentId}/import/`, params);
+export const queueImport = async ({ documentId, params }) => {
+    if (params["upload_file"]) {
+        // need to use FormData to handle file upload
+        const formData = new FormData();
+        Object.keys(params).forEach((key) => {
+            formData.append(key, params[key]);
+        });
+        const headers = { "Content-Type": "multipart/form-data" };
+        return await axios.post(`/documents/${documentId}/import/`, formData, {
+            headers,
+        });
+    }
+    return await axios.post(`/documents/${documentId}/import/`, params);
+};
 
 // retrieve latest tasks for a document
 export const retrieveDocumentTasks = async ({ documentId }) =>
-    await axios.get("/tasks/", {
-        params: {
-            document: documentId,
-        },
-    });
+    await axios.get(`/documents/${documentId}/task_groups/`);
 
 // cancel a task on a document by pk
 export const cancelTask = async ({ documentId, taskReportId }) =>
@@ -246,7 +367,54 @@ export const cancelTask = async ({ documentId, taskReportId }) =>
         task_report: taskReportId,
     });
 
+// create a new transcription layer
 export const createTranscriptionLayer = async ({ documentId, layerName }) =>
     await axios.post(`/documents/${documentId}/transcriptions/`, {
         name: layerName,
     });
+
+// delete a part (image) on a document
+export const deleteDocumentPart = async ({ documentId, partPk }) =>
+    await axios.delete(`/documents/${documentId}/parts/${partPk}/`);
+
+export const trainRecognizerModel = async ({
+    documentId,
+    model,
+    modelName,
+    override,
+    parts,
+    transcription,
+}) => {
+    const params = {
+        override,
+        parts,
+        transcription,
+    };
+    if (model) {
+        params.model = model;
+    }
+    if (modelName) {
+        params.model_name = modelName;
+    }
+    return await axios.post(`/documents/${documentId}/train/`, params);
+};
+
+export const trainSegmenterModel = async ({
+    documentId,
+    model,
+    modelName,
+    override,
+    parts,
+}) => {
+    const params = {
+        override,
+        parts,
+    };
+    if (model) {
+        params.model = model;
+    }
+    if (modelName) {
+        params.model_name = modelName;
+    }
+    return await axios.post(`/documents/${documentId}/segtrain/`, params);
+};

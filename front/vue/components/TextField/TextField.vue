@@ -9,7 +9,20 @@
                 class="escr-required"
             >*</span>
         </span>
+        <ul
+            v-if="errors && errors.length > 0"
+            class="escr-field-errors"
+        >
+            <li
+                v-for="(error, i) in errors"
+                :key="`error-${i}`"
+                class="escr-help-text escr-error-text"
+            >
+                {{ error }}
+            </li>
+        </ul>
         <input
+            v-if="!textarea"
             type="text"
             :placeholder="placeholder"
             :aria-label="label"
@@ -19,7 +32,20 @@
             :maxlength="maxLength"
             :invalid="invalid"
             @input="onInput"
+            @keydown="onKeydown"
         >
+        <textarea
+            v-else
+            :placeholder="placeholder"
+            :aria-label="label"
+            :value="value"
+            :disabled="disabled"
+            :name="name"
+            :maxlength="maxLength"
+            :invalid="invalid"
+            @input="onInput"
+            @keydown="onKeydown"
+        />
         <span
             v-if="helpText"
             class="escr-help-text"
@@ -44,6 +70,13 @@ export default {
         onInput: {
             type: Function,
             required: true,
+        },
+        /**
+         * Event handler for pressing a key
+         */
+        onKeydown: {
+            type: Function,
+            default: () => {},
         },
         /**
          * Placeholder text (optional)
@@ -103,11 +136,25 @@ export default {
             default: undefined,
         },
         /**
+         * Whether or not the input should be a textarea (as opposed to input type="text").
+         */
+        textarea: {
+            type: Boolean,
+            default: false,
+        },
+        /**
          * Current value.
          */
         value: {
             type: String,
             default: "",
+        },
+        /**
+         * Array of error strings.
+         */
+        errors: {
+            type: Array,
+            default: () => [],
         },
     },
 }

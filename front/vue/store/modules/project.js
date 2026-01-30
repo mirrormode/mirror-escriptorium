@@ -184,7 +184,7 @@ const actions = {
                     { root: true },
                 );
                 // redirect to new document
-                window.location = `/document/${data.pk}/images/`;
+                window.location = `/document/${data.pk}/`;
                 commit("setCreateDocumentModalOpen", false);
             } else {
                 commit("setLoading", false);
@@ -293,8 +293,8 @@ const actions = {
                     commit("addDocument", {
                         ...document,
                         tags: { tags: document.tags },
-                        // TODO: link to document dashboard
-                        href: `/document/${document.pk}/images/`,
+                        // link to document dashboard
+                        href: `/document/${document.pk}/`,
                     });
                 });
                 commit("setNextPage", data.next);
@@ -371,8 +371,8 @@ const actions = {
                 data.results.map((result) => ({
                     ...result,
                     tags: { tags: result.tags },
-                    // TODO: link to document dashboard
-                    href: `/document/${result.pk}/images/`,
+                    // link to document dashboard
+                    href: `/document/${result.pk}/`,
                 })),
             );
         } else {
@@ -487,14 +487,16 @@ const actions = {
     setLoading({ commit }, loading) {
         commit("setLoading", loading);
     },
+    /**
+     * Share a project with a group or user, then update based on returned data.
+     */
     async share({ commit, dispatch, rootState, state }) {
         const { user, group } = rootState.forms.share;
+        const params = { projectId: state.id };
+        if (user) params["user"] = user;
+        else if (group) params["group"] = group;
         try {
-            const { data } = await shareProject({
-                projectId: state.id,
-                user,
-                group,
-            });
+            const { data } = await shareProject(params);
             if (data) {
                 // show toast alert on success
                 dispatch(

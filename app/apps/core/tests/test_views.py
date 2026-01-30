@@ -43,7 +43,7 @@ class DocumentTestCase(TestCase):
     def test_list(self):
         self.client.force_login(self.user)
         uri = reverse('documents-list', kwargs={'slug': self.project.slug})
-        with self.assertNumQueries(19):
+        with self.assertNumQueries(21):
             resp = self.client.get(uri)
             self.assertEqual(resp.status_code, 200)
 
@@ -51,7 +51,7 @@ class DocumentTestCase(TestCase):
         self.assertEqual(Document.objects.count(), 4)  # 4 created in setup
         self.client.force_login(self.user)
         uri = reverse('document-create', kwargs={'slug': self.project.slug})
-        with self.assertNumQueries(24):
+        with self.assertNumQueries(29):
             resp = self.client.post(uri, {
                 'project': str(self.project.id),
                 'name': 'Test+metadatas',

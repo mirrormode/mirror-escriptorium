@@ -4,7 +4,7 @@ import logging
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.db import connection, transaction
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Count, F, Prefetch, Q
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
@@ -48,6 +48,7 @@ from api.serializers import (
     LineTranscriptionSerializer,
     LineTypeSerializer,
     OcrModelSerializer,
+    PartBulkMoveSerializer,
     PartDetailSerializer,
     PartMoveSerializer,
     PartSerializer,
@@ -56,6 +57,7 @@ from api.serializers import (
     ScriptSerializer,
     SegmentSerializer,
     SegTrainSerializer,
+    TaskGroupSerializer,
     TaskReportSerializer,
     TextAnnotationSerializer,
     TextualWitnessSerializer,
@@ -94,7 +96,7 @@ from core.models import (
 from core.tasks import recalculate_masks
 from imports.forms import ExportForm, ImportForm
 from imports.parsers import ParseError
-from reporting.models import TaskReport
+from reporting.models import TaskGroup, TaskReport
 from users.consumers import send_event
 from users.models import Group, User
 from versioning.models import NoChangeException
@@ -134,6 +136,17 @@ class TagFilter(Filter):
 
 class TagFilterSet(FilterSet):
     tags = TagFilter()
+
+    def filter_queryset(self, queryset):
+        # Apply parent filters first (tags)
+        queryset = super().filter_queryset(queryset)
+
+        # Add case-insensitive name search if 'name' parameter exists
+        name = self.request.GET.get('name')
+        if name:
+            queryset = queryset.filter(name__icontains=name)
+
+        return queryset
 
 
 class DocumentTagFilterSet(TagFilterSet):
@@ -234,7 +247,38 @@ class ProjectViewSet(ModelViewSet):
                     'documents',
                     filter=~Q(documents__workflow_state=Document.WORKFLOW_STATE_ARCHIVED),
                     distinct=True))
-                .select_related('owner'))
+                .select_related('owner')
+                .order_by('-updated_at')
+                )
+
+    @action(detail=True, methods=['post'])
+    def share(self, request, pk=None):
+        project = self.get_object()
+        if 'group' in request.data:
+            try:
+                target = (Group.objects
+                          .filter(user=request.user)
+                          .get(pk=request.data['group']))
+            except Group.DoesNotExist:
+                return Response({'error': 'invalid group.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            else:
+                project.shared_with_groups.add(target)
+        elif 'user' in request.data:
+            try:
+                target = User.objects.get(username__iexact=request.data['user'])
+            except User.DoesNotExist:
+                return Response({'error': 'invalid username.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            else:
+                project.shared_with_users.add(target)
+        else:
+            return Response({'error': 'Please provide either a group(pk) or user(username).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # re-instantiate serializer to use updated data
+        serializer = ProjectSerializer(project)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class ProjectTagViewSet(ModelViewSet):
@@ -268,10 +312,18 @@ class DocumentViewSet(ModelViewSet):
     ordering_fields = ['name', 'parts_count', 'updated_at']
 
     def get_queryset(self):
-        return Document.objects.for_user(self.request.user).prefetch_related(
+        qs = Document.objects.for_user(self.request.user).prefetch_related(
             Prefetch('valid_block_types', queryset=BlockType.objects.order_by('name')),
             Prefetch('valid_line_types', queryset=LineType.objects.order_by('name')),
-        ).annotate(parts_count=Count('parts', distinct=True))
+        ).annotate(parts_count=Count('parts', distinct=True)).order_by('-updated_at')
+
+        if self.action in ['retrieve', 'list']:
+            qs = qs.prefetch_related(
+                Prefetch('tags', queryset=DocumentTag.objects.all()),
+                Prefetch('transcriptions', queryset=Transcription.objects.filter(archived=False))
+            )
+
+        return qs
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -377,7 +429,7 @@ class DocumentViewSet(ModelViewSet):
                 continue
 
             try:
-                send_event('document', document.pk, f'{task_name}:error', {'reason': _('Canceled.')})
+                send_event('document', document.pk, f'{task_name}: error', {'reason': _('Canceled.')})
             except Exception as e:
                 # don't crash on websocket error
                 logger.exception(e)
@@ -460,10 +512,9 @@ class DocumentViewSet(ModelViewSet):
             return self.form_error(json.dumps(form.errors))
 
     def get_process_response(self, request, serializer_class):
-        document = self.get_object()
-        serializer = serializer_class(document=document,
-                                      user=request.user,
-                                      data=request.data)
+        context = self.get_serializer_context()
+        context['document'] = self.get_object()
+        serializer = serializer_class(data=request.data, context=context)
         if serializer.is_valid():
             try:
                 serializer.process()
@@ -540,12 +591,191 @@ class DocumentViewSet(ModelViewSet):
 
         return Response({'status': 'success'}, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['patch'])
+    def modify_ontology(self, request, pk=None):
+        # special PATCH action to modify documents' ontology nested relationships
+        # (can't be done from normal PUT/PATCH on a document because nested)
+
+        # check for needed params
+        if not any(param in request.data for param in [
+            'valid_part_types', 'valid_line_types', 'valid_block_types'
+        ]):
+            return Response(
+                {'error': "Must supply at least one of valid_part_types, valid_line_types, or valid_block_types."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        document = self.get_object()
+
+        # for all ontologies (part, line, block): check if array of pks is valid, and
+        # matching type objects exist, then set relations on the document to them
+
+        # part (image)
+        if 'valid_part_types' in request.data:
+            part_types = request.data['valid_part_types']
+            if not all([isinstance(pk, int) for pk in part_types]):
+                return Response(
+                    {'error': "valid_part_types must be an array of PKs."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            valid_part_types = DocumentPartType.objects.filter(pk__in=part_types)
+            if valid_part_types.count() < len(part_types):
+                return Response(
+                    {'error': "At least one pk in valid_part_types is invalid."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            document.valid_part_types.set(valid_part_types)
+
+        # line
+        if 'valid_line_types' in request.data:
+            line_types = request.data['valid_line_types']
+            if not all([isinstance(pk, int) for pk in line_types]):
+                return Response(
+                    {'error': "valid_line_types must be an array of PKs."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            valid_line_types = LineType.objects.filter(pk__in=line_types)
+            if valid_line_types.count() < len(line_types):
+                return Response(
+                    {'error': "At least one pk in valid_line_types is invalid."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            document.valid_line_types.set(valid_line_types)
+
+        # block (region)
+        if 'valid_block_types' in request.data:
+            block_types = request.data['valid_block_types']
+            if not all([isinstance(pk, int) for pk in block_types]):
+                return Response(
+                    {'error': "valid_block_types must be an array of PKs."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            valid_block_types = BlockType.objects.filter(pk__in=block_types)
+            if valid_block_types.count() < len(block_types):
+                return Response(
+                    {'error': "At least one pk in valid_block_types is invalid."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            document.valid_block_types.set(valid_block_types)
+
+        # save the document and return it in the response data
+        document.save()
+        serializer = self.get_serializer(document)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    def bulk_move_parts(self, request, pk=None):
+        # move multiple parts
+        data = request.data
+        # we pass parts in POST data since this is on a Document
+        part_pks = data.pop("parts")
+        parts = DocumentPart.objects.filter(document=pk, pk__in=part_pks).order_by("order")
+        serializer = PartBulkMoveSerializer(parts=parts, data=data)
+        if serializer.is_valid() and parts.count():
+            serializer.bulk_move()
+            return Response({'status': 'moved'})
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def share(self, request, pk=None):
+        document = self.get_object()
+        if 'group' in request.data:
+            try:
+                target = (Group.objects
+                          .filter(user=request.user)
+                          .get(pk=request.data['group']))
+            except Group.DoesNotExist:
+                return Response({'error': 'invalid group.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            else:
+                document.shared_with_groups.add(target)
+        elif 'user' in request.data:
+            try:
+                target = User.objects.get(username__iexact=request.data['user'])
+            except User.DoesNotExist:
+                return Response({'error': 'invalid username.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            else:
+                document.shared_with_users.add(target)
+        else:
+            return Response({'error': 'Please provide either a group(pk) or user(username).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # re-instantiate serializer to use updated data
+        serializer = DocumentSerializer(document, context={'user': request.user})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @method_decorator(cache_page(60 * 60))  # one hour
+    @action(detail=True, methods=['get'])
+    def stats(self, request, pk=None):
+        document = self.get_object()
+        order_param = self.request.query_params.get('ordering')
+
+        if order_param in ['frequency', '-frequency']:
+            order_by = order_param
+        elif order_param in ['typology', '-typology']:
+            order_by = order_param + '__name'
+        else:
+            order_by = '-frequency'
+
+        regions = (Block.objects
+                   .filter(document_part__document=document)
+                   .values('typology_id')
+                   .annotate(typology_name=F('typology__name'),
+                             frequency=Count('*'))
+                   .order_by(order_by))
+
+        lines = (Line.objects
+                 .filter(document_part__document=document)
+                 .values('typology_id')
+                 .annotate(typology_name=F('typology__name'),
+                           frequency=Count('*'))
+                 .order_by(order_by))
+
+        if order_param in ['typology', '-typology']:
+            order_by = '-frequency'
+        elif order_param in ['taxonomy', '-taxonomy']:
+            order_by = order_param + '__name'
+
+        text_annotations = (TextAnnotation.objects
+                            .filter(part__document=document)
+                            .values('taxonomy_id')
+                            .annotate(taxonomy_name=F('taxonomy__name'),
+                                      frequency=Count('*'))
+                            .order_by(order_by))
+
+        img_annotations = (ImageAnnotation.objects
+                           .filter(part__document=document)
+                           .values('taxonomy_id')
+                           .annotate(taxonomy_name=F('taxonomy__name'),
+                                     frequency=Count('*'))
+                           .order_by(order_by))
+
+        return Response({
+            'regions': regions,
+            'lines': lines,
+            'image_annotations': img_annotations,
+            'text_annotations': text_annotations
+        })
+
+
+class TaskGroupViewSet(ModelViewSet):
+    queryset = TaskGroup.objects.all().select_related('created_by')
+    serializer_class = TaskGroupSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        qs = qs.filter(document=self.kwargs.get('document_pk'))
+        return qs
+
 
 class TaskReportViewSet(ModelViewSet):
-    queryset = TaskReport.objects.all().order_by("-queued_at", "-started_at", "-done_at")
+    queryset = TaskReport.objects.all()
     serializer_class = TaskReportSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['document']
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['document', 'group']
+    ordering_fields = ['queued_at', 'started_at', 'done_at']
+    ordering = ['-queued_at', '-started_at', '-done_at']
 
     def get_queryset(self):
         qs = super().get_queryset().filter(user=self.request.user)
@@ -594,20 +824,27 @@ class PartMetadataViewSet(DocumentPermissionMixin, ModelViewSet):
         return context
 
 
-class ImportViewSet(GenericViewSet, CreateModelMixin):
-    # queryset = DocumentPart.objects.all()
+class ImportViewSet(DocumentPermissionMixin, GenericViewSet, CreateModelMixin):
+    queryset = DocumentPart.objects.all()
     serializer_class = ImportSerializer
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['user'] = self.request.user
+        context['document'] = Document.objects.get(pk=self.kwargs.get('document_pk'))
+        return context
 
     def create(self, request, document_pk=None):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        serializer.process()
         return Response({'status': 'ok'}, status=status.HTTP_201_CREATED)
 
 
 class PartViewSet(DocumentPermissionMixin, ModelViewSet):
     filter_backends = (OrderingFilter,)
     queryset = DocumentPart.objects.all().select_related('document')
+    filter_backends = [filters.OrderingFilter]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -722,12 +959,18 @@ class DocumentTranscriptionViewSet(DocumentPermissionMixin, ModelViewSet):
             self.get_object().archive()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except ProtectedObjectException:
-            return Response("This object can not be deleted.", status=400)
+            return Response("This transcription can not be deleted.", status=400)
 
-    @method_decorator(cache_page(60 * 60))  # one hour
-    @action(detail=True, methods=['GET'])
-    def characters(self, request, document_pk=None, pk=None):
-        transcription = self.get_object()
+    def characters_query(self, transcription, order_param):
+        if order_param == 'frequency':
+            order_by = "frequency ASC"
+        elif order_param == 'char':
+            order_by = "char ASC"
+        elif order_param == '-char':
+            order_by = "char DESC"
+        else:
+            order_by = "frequency DESC"
+
         with connection.cursor() as cursor:
             cursor.execute('''
             SELECT char, count(*) as frequency
@@ -735,30 +978,64 @@ class DocumentTranscriptionViewSet(DocumentPermissionMixin, ModelViewSet):
             WHERE "core_linetranscription"."line_id" = "core_line"."id"
             AND "core_line"."document_part_id" = "core_documentpart"."id"
             AND ("core_documentpart"."document_id" = %s AND "core_linetranscription"."transcription_id" = %s)
-            GROUP BY char ORDER BY frequency DESC;
-            ''', [self.document.pk, transcription.pk])
+            GROUP BY char ORDER BY
+            ''' + order_by + ';', [self.document.pk, transcription.pk])
             all_ = cursor.fetchall()
             data = [{'char': char, 'frequency': freq} for char, freq in all_]
-        return Response(data)
+
+        return data
+
+    @method_decorator(cache_page(60 * 60))  # one hour
+    @action(detail=True, methods=['GET'])
+    def stats(self, request, document_pk=None, pk=None):
+        transcription = self.get_object()
+        # Note: we don't have access to OrderingFilter goodies in an @action
+        order_param = self.request.query_params.get('ordering')
+        chars = self.characters_query(transcription, order_param)
+        line_count = transcription.linetranscription_set.exclude(content='').count()
+
+        return Response({
+            'line_count': line_count,
+            'characters': chars
+        })
 
 
-class BlockTypeViewSet(ModelViewSet):
-    queryset = BlockType.objects.filter(public=True)
+class TypologyViewSet(ModelViewSet):
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # POST queryset should be all()
+        if self.request.method == "GET":
+            # GET queryset should be only public types
+            return qs.filter(public=True)
+        elif self.request.method in ["PUT", "PATCH", "DELETE"]:
+            # PUT/PATCH/DELETE (updating and deleting) require permissions
+            return qs.filter(
+                Q(valid_in__owner=self.request.user)
+                | Q(valid_in__shared_with_users=self.request.user)
+                | Q(valid_in__shared_with_groups__user=self.request.user)
+                | Q(valid_in__project__owner=self.request.user)
+                | Q(valid_in__project__shared_with_users=self.request.user)
+            ).distinct()
+        return qs
+
+
+class BlockTypeViewSet(TypologyViewSet):
+    queryset = BlockType.objects.all()
     serializer_class = BlockTypeSerializer
 
 
-class LineTypeViewSet(ModelViewSet):
-    queryset = LineType.objects.filter(public=True)
+class LineTypeViewSet(TypologyViewSet):
+    queryset = LineType.objects.all()
     serializer_class = LineTypeSerializer
 
 
-class AnnotationTypeViewSet(ModelViewSet):
-    queryset = AnnotationType.objects.filter(public=True)
+class AnnotationTypeViewSet(TypologyViewSet):
+    queryset = AnnotationType.objects.all()
     serializer_class = AnnotationTypeSerializer
 
 
-class DocumentPartTypeViewSet(ModelViewSet):
-    queryset = DocumentPartType.objects.filter(public=True)
+class DocumentPartTypeViewSet(TypologyViewSet):
+    queryset = DocumentPartType.objects.all()
     serializer_class = DocumentPartTypeSerializer
 
 
@@ -917,7 +1194,7 @@ class LineViewSet(DocumentPermissionMixin, ModelViewSet):
     def merge(self, request, document_pk=None, part_pk=None):
         original_lines = request.data.get("lines")
 
-        if original_lines is None:
+        if not original_lines:
             return Response({'status': 'error', 'error': _("'lines' is mandatory.")}, status=status.HTTP_400_BAD_REQUEST)
 
         if len(original_lines) > MAX_MERGE_SIZE:
@@ -1027,7 +1304,7 @@ class LineTranscriptionViewSet(DocumentPermissionMixin, ModelViewSet):
                 response.append(serializer.data)
 
             else:
-                errors.append(errors)
+                errors.append(serializer.errors)
 
         if errors:
             return Response(errors,
@@ -1046,14 +1323,15 @@ class LineTranscriptionViewSet(DocumentPermissionMixin, ModelViewSet):
 class OcrModelViewSet(ModelViewSet):
     queryset = OcrModel.objects.all()
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['documents']
+    filterset_fields = ['documents', 'job']
     serializer_class = OcrModelSerializer
 
     def get_queryset(self):
         return (super().get_queryset()
                 .filter(Q(owner=self.request.user)
                         | Q(ocr_model_rights__user=self.request.user)
-                        | Q(ocr_model_rights__group__user=self.request.user))
+                        | Q(ocr_model_rights__group__user=self.request.user)
+                        | Q(public=True))
                 .distinct()
                 )
 

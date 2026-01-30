@@ -34,7 +34,8 @@
                     <input
                         type="checkbox"
                         value="include-images"
-                        :checked="includeImages === true"
+                        :checked="includeImages === true && fileFormat !== 'text'"
+                        :disabled="fileFormat === 'text'"
                         @change="handleIncludeImagesChange"
                     >
                     Include images
@@ -43,6 +44,22 @@
                     Will significantly increase the time to produce and download the export.
                 </span>
             </div>
+
+            <div class="escr-form-field escr-include-characters-field escr-checkbox-field">
+                <label>
+                    <input
+                        type="checkbox"
+                        value="include-characters"
+                        @change="handleIncludeCharactersChange"
+                    >
+                    Include Characters
+                </label>
+                <span class="escr-help-text">
+                    This data is only present for transcriptions coming from automatic recognition
+                    and is invalidated by manual edition.
+                </span>
+            </div>
+
             <ArrayField
                 :on-change="handleRegionTypesChange"
                 :options="regionTypesOptions"
@@ -95,10 +112,24 @@ export default {
             required: true,
         },
         /**
+         * Whether or not the OpenITI Markdown export is enabled on the instance.
+         */
+        markdownEnabled: {
+            type: Boolean,
+            required: true,
+        },
+        /**
          * List of all region types on this document.
          */
         regionTypes: {
             type: Array,
+            required: true,
+        },
+        /**
+         * Whether or not the OpenITI TEI XML export is enabled on the instance.
+         */
+        teiEnabled: {
+            type: Boolean,
             required: true,
         },
         /**
@@ -133,9 +164,11 @@ export default {
     },
     computed: {
         ...mapState({
+            documentId: (state) => state.document.id,
             fileFormat: (state) => state.forms.export.fileFormat,
             formRegionTypes: (state) => state.forms.export.regionTypes,
             includeImages: (state) => state.forms.export.includeImages,
+            includeCharacters: (state) => state.forms.export.includeCharacters,
             transcriptionLayer: (state) => state.forms.export.transcription,
         }),
         /**
@@ -168,7 +201,7 @@ export default {
          * File format options for export
          */
         fileFormatOptions() {
-            return [
+            const formatOptions = [
                 {
                     label: "Text",
                     value: "text",
@@ -176,8 +209,8 @@ export default {
                 },
                 {
                     label: "PageXML",
-                    value: "page",
-                    selected: this.fileFormat === "page",
+                    value: "pagexml",
+                    selected: this.fileFormat === "pagexml",
                 },
                 {
                     label: "ALTO",
@@ -185,7 +218,44 @@ export default {
                     selected: this.fileFormat === "alto",
                 },
             ];
+            if (this.markdownEnabled) {
+                formatOptions.push({
+                    label: "OpenITI Markdown",
+                    value: "openitimarkdown",
+                    selected: this.fileFormat === "openitimarkdown",
+                });
+            }
+            if (this.teiEnabled) {
+                formatOptions.push({
+                    label: "OpenITI TEI XML",
+                    value: "teixml",
+                    selected: this.fileFormat === "teixml",
+                });
+            }
+            return formatOptions;
         },
+    },
+    created() {
+        // initialize transcription field with user's last edited transcription
+        // eslint-disable-next-line no-undef
+        let itrans = userProfile.get("initialTranscriptions");
+        if (itrans && itrans[this.documentId]) {
+            this.handleGenericInput({
+                form: "export",
+                field: "transcription",
+                value: itrans[this.documentId],
+            });
+        }
+        // initialize export format with user's last selected format
+        // eslint-disable-next-line no-undef
+        let exportFormat = userProfile.get("exportFormat");
+        if (exportFormat) {
+            this.handleGenericInput({
+                form: "export",
+                field: "fileFormat",
+                value: exportFormat,
+            });
+        }
     },
     methods: {
         ...mapActions("forms", [
@@ -196,11 +266,25 @@ export default {
             this.handleGenericInput({
                 form: "export", field: "fileFormat", value: e.target.value,
             });
+            if (e.target.value === "text") {
+                // if switching to text export, uncheck "include images"
+                this.handleGenericInput({ form: "export", field: "includeImages", value: false });
+            }
+            // store the export format choice for later use
+            // eslint-disable-next-line no-undef
+            userProfile.set("exportFormat", e.target.value);
         },
         handleIncludeImagesChange(e) {
             this.handleGenericInput({
                 form: "export",
                 field: "includeImages",
+                value: e.target.checked,
+            });
+        },
+        handleIncludeCharactersChange(e) {
+            this.handleGenericInput({
+                form: "export",
+                field: "includeCharacters",
                 value: e.target.checked,
             });
         },

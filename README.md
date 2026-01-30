@@ -8,7 +8,7 @@ The eScriptorium app itself is at the 'center'. It is a work in progress but wil
 - [daphne](https://github.com/django/daphne) (channel server for websockets)
 - [celery](http://www.celeryproject.org/)
 - postgres
-- [elasticsearch](https://www.elastic.co/) (integration not started yet)
+- [elasticsearch](https://www.elastic.co/)
 - redis (cache, celery broker, other disposable data)
 - [kraken](http://kraken.re)
 - [docker](https://www.docker.com/) (deployment)
@@ -19,11 +19,22 @@ Two options,
 - [install with Docker](https://gitlab.com/scripta/escriptorium/-/wikis/docker-install), or a
 - [full local install](https://gitlab.com/scripta/escriptorium/-/wikis/full-install).
 
-eScriptorium needs either Linux, Mac OS or (WSL on windows).
+eScriptorium needs either Linux, macOS or Windows (with WSL).
 
 
 ## Contributing
 See [Contributing to eScriptorium](https://gitlab.com/scripta/escriptorium/-/wikis/contributing).
+
+## Steering Committee
+
+- Daniel Stoekl Ben Ezra (EPHE-PSL, UMR AOROC 8546)
+- Peter Stokes (EPHE-PSL, UMR AOROC 8546)
+- Benjamin Kiessling (EPHE-PSL, UMR AOROC 8546)
+- Robin Tissot (EPHE-PSL, UMR AOROC 8546)
+- Mathew Barber (Aga Khan University, Institute for the Study of Muslim Civilisations)
+- David Smith (Northeastern University)
+- Thibault Clérice (Inria)
+- Hassen Aguili (Inria)
 
 ## Current financial and technical contributors include:
 - [École Pratique des Hautes Études (EPHE)](https://www.ephe.psl.eu)

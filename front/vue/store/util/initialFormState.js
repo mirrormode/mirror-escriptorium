@@ -1,6 +1,10 @@
 // Utility to store the initial state for each form, so that forms can easily be cleared by key/name
 
 export default {
+    addComponent: {
+        name: "",
+        values: "",
+    },
     align: {
         beamSize: "",
         gap: 600,
@@ -40,20 +44,40 @@ export default {
         tags: [],
         tagName: "",
     },
+    elementDetails: {
+        comments: "",
+        metadata: [],
+        name: "",
+        typology: "",
+    },
     export: {
         fileFormat: "",
         includeImages: false,
+        includeCharacters: false,
         regionTypes: [],
         transcription: "",
     },
     import: {
         iiifUri: "",
+        imagesComplete: false,
+        imagesLoading: false,
         layerName: "",
         metsType: "url",
         metsUri: "",
         mode: "images",
         overwrite: false,
         uploadFile: "",
+    },
+    moveImages: {
+        index: "",
+        location: "before",
+    },
+    ontology: {
+        image: [],
+        lines: [],
+        parts: [],
+        regions: [],
+        text: [],
     },
     segment: {
         model: "",
@@ -65,8 +89,17 @@ export default {
         group: "",
         user: "",
     },
+    train: {
+        model: "",
+        modelName: "",
+        override: false,
+        transcription: "",
+    },
     transcribe: {
         model: "",
         layerName: "",
+    },
+    transcriptionManagement: {
+        transcriptions: [],
     },
 };

@@ -1,5 +1,5 @@
 <template>
-    <div class="escr-body escr-vue-enabled">
+    <div class="escr-page-container">
         <div class="escr-page">
             <EscrBreadcrumbs
                 v-if="breadcrumbs && breadcrumbs.length"
@@ -60,6 +60,7 @@ export default {
         }
     },
     created() {
+        // intercept all websocket messages
         const scheme = location.protocol === "https:" ? "wss:" : "ws:";
         const msgSocket = new ReconnectingWebSocket(`${scheme}//${window.location.host}/ws/notif/`);
         msgSocket.maxReconnectAttempts = 3;

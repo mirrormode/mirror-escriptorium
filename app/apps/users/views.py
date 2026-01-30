@@ -9,7 +9,7 @@ from django.contrib.messages.views import SuccessMessageMixin
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.http import Http404, HttpResponseRedirect
-from django.urls import get_script_prefix, reverse
+from django.urls import reverse
 from django.utils.functional import cached_property
 from django.utils.translation import gettext as _
 from django.views.generic import (
@@ -22,6 +22,7 @@ from django.views.generic import (
 from rest_framework.authtoken.models import Token
 
 from users.forms import (
+    BulkInvitationForm,
     ContactUsForm,
     GroupForm,
     GroupInvitationForm,
@@ -42,19 +43,50 @@ class SendInvitation(LoginRequiredMixin, SuccessMessageMixin, CreateView):
     model = Invitation
     template_name = 'users/invitation_form.html'
     form_class = InvitationForm
-    success_url = get_script_prefix()
     success_message = _("Invitation sent successfully!")
 
     def get_form(self):
         form_class = self.get_form_class()
         return form_class(request=self.request, **self.get_form_kwargs())
 
+    def get_success_url(self):
+        return reverse('home')
+
+
+class BulkInviteView(LoginRequiredMixin, SuccessMessageMixin, FormView):
+    template_name = 'users/bulk_invitation_form.html'
+    form_class = BulkInvitationForm
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['request'] = self.request
+        return kwargs
+
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.has_perm('users.can_invite'):
+            raise PermissionDenied(_("You do not have permission to invite users."))
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        count, invalid = form.process_invitations()
+        msg = _("Successfully sent %(count)d invitations.") % {'count': count}
+        if invalid:
+            msg += " " + _("Skipped invalid: %(emails)s") % {
+                'emails': ", ".join(invalid)
+            }
+            messages.warning(self.request, msg)
+        else:
+            messages.success(self.request, msg)
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse('home')
+
 
 class AcceptInvitation(CreateView):
     model = User
     template_name = 'users/invitation_accept_register.html'
     form_class = InvitationAcceptForm
-    success_url = get_script_prefix() + 'login/'
     success_message = _("Successfully registered, you can now log in!")
 
     @cached_property
@@ -80,6 +112,9 @@ class AcceptInvitation(CreateView):
         }
         return form
 
+    def get_success_url(self):
+        return reverse('login')
+
     def get(self, *args, **kwargs):
         if self.invitation.workflow_state < Invitation.STATE_RECEIVED:
             self.invitation.workflow_state = Invitation.STATE_RECEIVED
@@ -91,6 +126,57 @@ class AcceptInvitation(CreateView):
         self.invitation.accept(form.instance)
         # TODO: send a welcome message ?!
         return response
+
+
+class InviteView(LoginRequiredMixin, SuccessMessageMixin, TemplateView):
+    template_name = 'users/invitation_form.html'
+
+    def _default_mode(self):
+        path = self.request.path.rstrip('/')
+        return 'bulk' if path.endswith('/bulk') else 'single'
+
+    def get_mode(self):
+        return self.request.GET.get('mode') or self._default_mode()
+
+    def get_context_data(self, **kwargs):
+        from .forms import BulkInvitationForm, InvitationForm
+        ctx = super().get_context_data(**kwargs)
+        mode = kwargs.get('active_mode') or self.get_mode()
+        ctx['active_mode'] = mode
+        if mode == 'bulk':
+            form = kwargs.get('form') or BulkInvitationForm(request=self.request)
+        else:
+            form = kwargs.get('form') or InvitationForm(request=self.request)
+        ctx['form'] = form
+        return ctx
+
+    def post(self, request, *args, **kwargs):
+        from .forms import BulkInvitationForm, InvitationForm
+        mode = request.POST.get('mode') or self._default_mode()
+
+        if mode == 'bulk':
+            bulk_form = BulkInvitationForm(request.POST, request.FILES, request=request)
+            if bulk_form.is_valid():
+                count, invalid = bulk_form.process_invitations()
+                msg = _("Successfully sent %(count)d invitations.") % {'count': count}
+                if invalid:
+                    msg += " " + _("Skipped invalid: %(emails)s") % {'emails': ", ".join(invalid)}
+                    messages.warning(request, msg)
+                else:
+                    messages.success(request, msg)
+                return HttpResponseRedirect(request.get_full_path())
+            return self.render_to_response(self.get_context_data(active_mode='bulk', form=bulk_form))
+
+        # single user invitation
+        single_form = InvitationForm(request.POST, request=request)
+        if single_form.is_valid():
+            invitation = single_form.save()
+            messages.success(
+                request,
+                _("Invitation sent to %(email)s.") % {'email': invitation.recipient_email}
+            )
+            return HttpResponseRedirect(request.get_full_path())
+        return self.render_to_response(self.get_context_data(active_mode='single', form=single_form))
 
 
 class AcceptGroupInvitation(LoginRequiredMixin, DetailView):
@@ -105,7 +191,7 @@ class AcceptGroupInvitation(LoginRequiredMixin, DetailView):
         self.object = self.get_object()
         valid = self.object.accept(self.request.user)
         if not valid:
-            return Http404
+            raise Http404("Invitation is not valid.")
         messages.success(self.request, self.get_success_message())
         return HttpResponseRedirect(reverse('profile-team-list'))
 
@@ -136,10 +222,12 @@ class RemoveFromGroup(GroupOwnerMixin, LoginRequiredMixin, SuccessMessageMixin, 
 
 class LeaveGroup(LoginRequiredMixin, SuccessMessageMixin, DetailView):
     model = Group
-    success_url = get_script_prefix() + 'profile/teams/'
 
     def get_success_message(self, data):
         return _('You successfully left {team}.').format(team=self.object)
+
+    def get_success_url(self):
+        return reverse('profile-team-list')
 
     def post(self, request, **kwargs):
         self.get_object().user_set.remove(request.user)
@@ -164,12 +252,14 @@ class TransferGroupOwnership(GroupOwnerMixin, LoginRequiredMixin, SuccessMessage
 class ProfileInfos(LoginRequiredMixin, SuccessMessageMixin, UpdateView):
     model = User
     form_class = ProfileForm
-    success_url = get_script_prefix() + 'profile/'
     success_message = _('Profile successfully saved.')
     template_name = 'users/profile.html'
 
     def get_object(self):
         return self.request.user
+
+    def get_success_url(self):
+        return reverse('profile')
 
 
 class ProfileApiKey(LoginRequiredMixin, FormView):
@@ -234,7 +324,6 @@ class ProfileGroupListCreate(LoginRequiredMixin, SuccessMessageMixin, CreateView
     Create new groups and list them
     """
     model = Group
-    success_url = get_script_prefix() + 'profile/teams/'
     success_message = _('Team successfully created.')
     template_name = 'users/profile_group_list.html'
     form_class = GroupForm
@@ -250,6 +339,9 @@ class ProfileGroupListCreate(LoginRequiredMixin, SuccessMessageMixin, CreateView
             recipient=self.request.user,
             workflow_state__lt=Invitation.STATE_ACCEPTED)
         return context
+
+    def get_success_url(self):
+        return reverse('profile-team-list')
 
 
 class GroupDetail(GroupOwnerMixin, LoginRequiredMixin, SuccessMessageMixin, UpdateView):
@@ -277,4 +369,6 @@ class ContactUsView(SuccessMessageMixin, CreateView):
     form_class = ContactUsForm
     success_message = _('Message successfully sent.')
     template_name = 'users/contactus.html'
-    success_url = get_script_prefix() + 'contact/'
+
+    def get_success_url(self):
+        return reverse('contactus')

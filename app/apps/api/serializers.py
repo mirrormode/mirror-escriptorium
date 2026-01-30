@@ -5,12 +5,12 @@ import os.path
 import bleach
 from django.conf import settings
 from django.core.files.base import ContentFile
-from django.db.models import Count, Q
+from django.db.models import Count, Max, Min, Q
 from django.db.utils import IntegrityError
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from easy_thumbnails.files import get_thumbnailer
-from rest_framework import serializers
+from rest_framework import fields, serializers
 
 from api.fields import DisplayChoiceField
 from core.models import (
@@ -27,6 +27,7 @@ from core.models import (
     DocumentTag,
     ImageAnnotation,
     ImageAnnotationComponentValue,
+    InstanceSettings,
     Line,
     LineTranscription,
     LineType,
@@ -41,11 +42,11 @@ from core.models import (
     TextualWitness,
     Transcription,
 )
-from core.tasks import segment, segtrain, train, transcribe
+from core.tasks import _chunks, segment, segtrain, train, transcribe
 from imports.forms import FileImportError, clean_import_uri, clean_upload_file
 from imports.models import DocumentImport
 from imports.tasks import document_import
-from reporting.models import TaskReport
+from reporting.models import TaskGroup, TaskReport
 from users.consumers import send_event
 from users.models import Group, User
 
@@ -101,7 +102,7 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ('date_joined', 'last_login', 'is_staff', 'can_invite')
 
     def get_can_invite(self, user):
-        return user.has_perms(['user.can_invite'])
+        return user.has_perms(['users.can_invite'])
 
 
 class DetailedGroupSerializer(serializers.ModelSerializer):
@@ -167,10 +168,39 @@ class PartMoveSerializer(serializers.ModelSerializer):
         self.part.to(self.validated_data['index'])
 
 
+class PartBulkMoveSerializer(serializers.ModelSerializer):
+    index = serializers.IntegerField()
+
+    class Meta:
+        model = DocumentPart
+        fields = ('index',)
+
+    def __init__(self, *args, parts=None, **kwargs):
+        self.parts = parts
+        super().__init__(*args, **kwargs)
+
+    def bulk_move(self):
+        oq = self.parts.first().get_ordering_queryset()
+        # construct full parts list without the selected parts, but maintain indices
+        reordered = [None if part in self.parts else part for part in oq]
+        idx = self.validated_data['index']
+        if idx == -1:
+            # index of -1 means move to the end
+            idx = oq.count()
+        # insert correctly-ordered selected parts at the new index
+        reordered[idx:idx] = list(self.parts)
+        # filter all the Nones out
+        reordered = list(filter(lambda item: item is not None, reordered))
+        # store the new orders
+        for (idx, p) in enumerate(reordered):
+            p.order = idx
+        DocumentPart.objects.bulk_update(reordered, ["order"])
+
+
 class TranscriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Transcription
-        fields = ('pk', 'name', 'archived', 'avg_confidence')
+        fields = ('pk', 'name', 'archived', 'avg_confidence', 'created_at', 'comments')
 
     def create(self, data):
         document = Document.objects.get(pk=self.context["view"].kwargs["document_pk"])
@@ -217,7 +247,9 @@ class AnnotationComponentSerializer(serializers.ModelSerializer):
 
 class AnnotationTaxonomySerializer(serializers.ModelSerializer):
     typology = AnnotationTypeSerializer(required=False)
-    components = AnnotationComponentSerializer(many=True, required=False)
+    components = serializers.PrimaryKeyRelatedField(
+        many=True, required=False, queryset=AnnotationComponent.objects.all()
+    )
     marker_type = DisplayChoiceField(AnnotationTaxonomy.MARKER_TYPE_CHOICES, required=True)
 
     class Meta:
@@ -225,6 +257,10 @@ class AnnotationTaxonomySerializer(serializers.ModelSerializer):
         fields = ('pk', 'name', 'abbreviation',
                   'marker_type', 'marker_detail', 'has_comments',
                   'typology', 'components')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['components'].queryset = AnnotationComponent.objects.filter(document=self.context['view'].kwargs['document_pk'])
 
     def create(self, data):
         try:
@@ -245,6 +281,30 @@ class AnnotationTaxonomySerializer(serializers.ModelSerializer):
         for compo in components_data:
             taxo.components.add(compo)
         return taxo
+
+    def to_representation(self, instance):
+        # only use AnnotationComponentSerializer on GET; otherwise, use pks
+        repr = super().to_representation(instance)
+        repr['components'] = [AnnotationComponentSerializer(c).data for c in instance.components.all()]
+        return repr
+
+    def update(self, instance, data):
+        try:
+            components_data = data.pop('components')
+        except KeyError:
+            components_data = []
+        try:
+            typo_data = data.pop('typology')
+        except KeyError:
+            typo_data = None
+        if typo_data:
+            typo, _ = AnnotationType.objects.get_or_create(name=typo_data['name'])
+        else:
+            typo = None
+        data['typology'] = typo
+        super().update(instance, data)
+        instance.components.set(components_data)
+        return instance
 
 
 class ImageAnnotationComponentSerializer(serializers.ModelSerializer):
@@ -347,20 +407,26 @@ class DocumentTagSerializer(serializers.ModelSerializer):
 class DocumentSerializer(serializers.ModelSerializer):
     main_script = serializers.SlugRelatedField(slug_field='name',
                                                queryset=Script.objects.all())
-    transcriptions = TranscriptionSerializer(many=True, read_only=True)
+
     valid_block_types = BlockTypeSerializer(many=True, read_only=True)
     valid_line_types = LineTypeSerializer(many=True, read_only=True)
     valid_part_types = DocumentPartTypeSerializer(many=True, read_only=True)
     parts_count = serializers.ReadOnlyField()
     project = serializers.SlugRelatedField(slug_field='slug',
                                            queryset=Project.objects.all())
+    project_name = serializers.SerializerMethodField()
+    project_id = serializers.SerializerMethodField()
+    shared_with_users = UserSerializer(many=True, read_only=True)
+    shared_with_groups = GroupSerializer(many=True, read_only=True)
+    transcriptions = TranscriptionSerializer(many=True, read_only=True)
 
     class Meta:
         model = Document
         fields = ('pk', 'name', 'project', 'transcriptions',
                   'main_script', 'read_direction', 'line_offset', 'show_confidence_viz',
                   'valid_block_types', 'valid_line_types', 'valid_part_types',
-                  'parts_count', 'tags', 'created_at', 'updated_at')
+                  'parts_count', 'tags', 'created_at', 'updated_at', 'project_name', 'project_id',
+                  'shared_with_users', 'shared_with_groups')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -372,123 +438,17 @@ class DocumentSerializer(serializers.ModelSerializer):
         except Script.DoesNotExist:
             raise serializers.ValidationError('This script does not exists in the database.')
 
+    def get_project_name(self, document):
+        return document.project.name
+
+    def get_project_id(self, document):
+        return document.project.id
+
     def to_representation(self, instance):
         # only use DocumentTagSerializer on GET; otherwise, use pks
         repr = super().to_representation(instance)
         repr['tags'] = [DocumentTagSerializer(tag).data for tag in instance.tags.all()]
         return repr
-
-
-class ImportSerializer(serializers.Serializer):
-    MODE_CHOICES = (
-        ('pdf', 'Import a pdf file.'),
-        ('iiif', 'Import from a iiif manifest.'),
-        ('mets', 'Import a mets file.'),
-        ('xml', 'Import from a xml file.')
-    )
-    mode = serializers.ChoiceField(choices=MODE_CHOICES)
-
-    transcription = serializers.PrimaryKeyRelatedField(
-        queryset=Transcription.objects.all(),
-        required=False)
-    override = serializers.BooleanField(required=False)
-    upload_file = serializers.FileField(required=False)
-
-    iiif_uri = serializers.URLField(required=False)
-
-    METS_TYPE_CHOICES = (
-        ('local', _('Upload local file')),
-        ('url', _('download file from url')),
-    )
-    mets_type = serializers.ChoiceField(choices=METS_TYPE_CHOICES, required=False)
-    mets_uri = serializers.URLField(required=False)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.user = self.context["view"].request.user
-        self.document = Document.objects.get(pk=self.context["view"].kwargs["document_pk"])
-        self.mets_base_uri = None
-        self.fields['transcription'].queryset = Transcription.objects.filter(document=self.document)
-
-    def validate_iiif_uri(self, uri):
-        try:
-            content, total = clean_import_uri(uri, self.document, 'tmp.json')
-            self.file = ContentFile(content, name='iiif_manifest.json')
-            self.total = total
-        except FileImportError as e:
-            raise serializers.ValidationError(repr(e))
-
-    def validate_mets_uri(self, uri):
-        try:
-            self.mets_base_uri = os.path.dirname(uri)
-            content, total = clean_import_uri(uri, self.document, 'tmp.xml',
-                                              is_mets=True, mets_base_uri=self.mets_base_uri)
-            self.file = ContentFile(content, name='mets.xml')
-            self.total = total
-        except FileImportError as e:
-            raise serializers.ValidationError(repr(e))
-
-    def validate_upload_file(self, upload_file):
-        try:
-            parser = clean_upload_file(upload_file, self.document, self.user)
-            self.file = parser.file
-            self.total = parser.total
-        except FileImportError as e:
-            raise serializers.ValidationError(repr(e))
-
-    def validate(self, data):
-        data = super().validate(data)
-
-        # validate different modes
-        mode = data.get('mode')
-        if mode == 'iiif':
-            if 'iiif_uri' not in data:
-                raise serializers.ValidationError("'iiif_uri' is mandatory with mode 'iiif'.")
-
-        elif mode == 'mets':
-            if 'mets_type' not in data:
-                raise serializers.ValidationError("'mets_type' is mandatory with mode 'mets'.")
-            else:
-                if data.get('mets_type') == 'url':
-                    if 'mets_uri' not in data:
-                        raise serializers.ValidationError("'mets_uri' is mandatory with mode 'mets'. and type 'url'")
-                elif 'upload_file' not in data:
-                    raise serializers.ValidationError("'upload_file' is mandatory with mode 'mets'. and type 'local'")
-
-        elif mode == 'pdf':
-            if 'upload_file' not in data:
-                raise serializers.ValidationError("'upload_file' is mandatory with mode 'pdf'.")
-
-        elif mode == 'xml':
-            if 'upload_file' not in data:
-                raise serializers.ValidationError("'upload_file' is mandatory with mode 'xml'.")
-
-        if not settings.DISABLE_QUOTAS:
-            if not self.user.has_free_cpu_minutes():
-                raise serializers.ValidationError(_("You don't have any CPU minutes left."))
-
-        return data
-
-    def create(self, validated_data):
-        imp = DocumentImport(
-            document=self.document,
-            name=validated_data.get('transcription').name if 'transcription' in validated_data else '',
-            override=validated_data.get('override') or False,
-            import_file=self.file,
-            total=self.total,
-            started_by=self.user,
-            with_mets=validated_data.get('mode') == 'mets',
-            mets_base_uri=self.mets_base_uri
-        )
-        imp.save()
-
-        document_import.delay(
-            import_pk=imp.pk,
-            user_pk=self.user.pk,
-            report_label=_('Import in %(document_name)s') % {'document_name': self.document.name}
-        )
-
-        return imp
 
 
 class DocumentTasksSerializer(serializers.ModelSerializer):
@@ -516,6 +476,39 @@ class DocumentTasksSerializer(serializers.ModelSerializer):
             return None
 
         return last_task.started_at
+
+
+class TaskGroupSerializer(serializers.ModelSerializer):
+    created_by = serializers.SerializerMethodField()
+    tasks = serializers.SerializerMethodField()
+    method = serializers.SerializerMethodField()
+    page_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskGroup
+        fields = ('pk', 'method', 'created_at', 'created_by', 'tasks', 'page_count')
+
+    def get_created_by(self, task_group):
+        return task_group.created_by.username if task_group.created_by else None
+
+    def get_tasks(self, task_group):
+        data = task_group.taskreport_set.values('workflow_state').annotate(queued_at=Min('queued_at'),
+                                                                           started_at=Min('started_at'),
+                                                                           done_at=Max('done_at'),
+                                                                           count=Count('*'))
+        for state in data:
+            state['workflow_state'] = dict(TaskReport.WORKFLOW_STATE_CHOICES)[state['workflow_state']]
+        return data
+
+    def get_method(self, task_group):
+        try:
+            return task_group.taskreport_set.values_list('method').first()[0]
+        except TypeError:
+            return None
+
+    def get_page_count(self, task_group):
+        trs = task_group.taskreport_set.exclude(document_part__isnull=True)
+        return trs.values_list('document_part', flat=True).distinct().count()
 
 
 class TaskReportSerializer(serializers.ModelSerializer):
@@ -603,7 +596,6 @@ class PartSerializer(serializers.ModelSerializer):
     image = ImageField(required=False, thumbnails=['card', 'large'])
     image_file_size = serializers.IntegerField(required=False)
     filename = serializers.CharField(read_only=True)
-    bw_image = ImageField(thumbnails=['large'], required=False)
     workflow = serializers.JSONField(read_only=True)
     transcription_progress = serializers.IntegerField(read_only=True)
 
@@ -618,7 +610,6 @@ class PartSerializer(serializers.ModelSerializer):
             'image',
             'image_file_size',
             'original_filename',
-            'bw_image',
             'workflow',
             'order',
             'recoverable',
@@ -682,7 +673,7 @@ class LineTranscriptionSerializer(serializers.ModelSerializer):
                   'versions', 'version_author', 'version_source', 'version_updated_at')
 
     def cleanup(self, data):
-        cleaned_data = bleach.clean(data, tags=['em', 'strong', 's', 'u'], strip=True)
+        cleaned_data = bleach.clean(data, tags=['em', 'strong', 's', 'u'], strip=False)
         cleaned_data = html.unescape(cleaned_data)
         return cleaned_data
 
@@ -695,6 +686,13 @@ class LineListSerializer(serializers.ListSerializer):
         # Maps for id->instance and id->data item.
         line_mapping = {line.pk: line for line in qs}
         data_mapping = {item['pk']: item for item in validated_data}
+
+        # Detect missing PKs
+        missing = set(data_mapping) - set(line_mapping)
+        if missing:
+            raise serializers.ValidationError({
+                'lines': f"These line IDs do not exist or do not belong to this part: {sorted(missing)}"
+            })
 
         # Perform updates.
         ret = []
@@ -759,6 +757,11 @@ class LineOrderSerializer(serializers.ModelSerializer):
         fields = ('pk', 'order')
         list_serializer_class = LineOrderListSerializer
 
+    def validate_order(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Order must be non-negative")
+        return value
+
 
 class DetailedLineSerializer(LineSerializer):
     transcriptions = LineTranscriptionSerializer(many=True, required=False)
@@ -801,12 +804,13 @@ class OcrModelSerializer(serializers.ModelSerializer):
     rights = serializers.SerializerMethodField(source='get_rights')
     script = serializers.ReadOnlyField(source='script.name')
     parent = serializers.ReadOnlyField(source='parent.name')
+    can_share = serializers.SerializerMethodField(source='get_can_share')
 
     class Meta:
         model = OcrModel
         fields = ('pk', 'name', 'file', 'file_size', 'job',
                   'owner', 'training', 'versions', 'documents',
-                  'accuracy_percent', 'rights', 'script', 'parent')
+                  'accuracy_percent', 'rights', 'script', 'parent', 'can_share')
 
     def create(self, data):
         # If quotas are enforced, assert that the user still has free disk storage
@@ -828,15 +832,20 @@ class OcrModelSerializer(serializers.ModelSerializer):
         else:
             return "user"
 
+    def get_can_share(self, instance):
+        user = self.context["view"].request.user
+        return instance.owner == user and not instance.public
+
 
 class ProcessSerializerMixin():
+    PROCESS_NAME = 'Not Implemented'
     CHECK_GPU_QUOTA = False
     CHECK_DISK_QUOTA = False
 
-    def __init__(self, document, user, *args, **kwargs):
-        self.document = document
-        self.user = user
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.user = self.context["view"].request.user
+        self.document = self.context["document"]
 
     def validate(self, data):
         data = super().validate(data)
@@ -850,8 +859,17 @@ class ProcessSerializerMixin():
                 raise serializers.ValidationError(_("You don't have any disk storage left."))
         return data
 
+    def process(self):
+        self.task_group = TaskGroup.objects.create(
+            task=self.PROCESS_NAME,
+            created_by=self.user,
+            document=self.document)
+
 
 class SegmentSerializer(ProcessSerializerMixin, serializers.Serializer):
+    from core.models import InstanceSettings
+    from core.tasks import _chunks
+    PROCESS_NAME = 'segmentation'
     STEPS_CHOICES = (
         ('both', _('Lines and regions')),
         ('lines', _('Lines Baselines and Masks')),
@@ -866,7 +884,8 @@ class SegmentSerializer(ProcessSerializerMixin, serializers.Serializer):
     )
 
     parts = serializers.PrimaryKeyRelatedField(many=True,
-                                               queryset=DocumentPart.objects.all())
+                                               queryset=DocumentPart.objects.all(),
+                                               required=False)
     steps = serializers.ChoiceField(choices=STEPS_CHOICES,
                                     required=False,
                                     default='both')
@@ -884,30 +903,37 @@ class SegmentSerializer(ProcessSerializerMixin, serializers.Serializer):
         self.fields['parts'].queryset = DocumentPart.objects.filter(document=self.document)
 
     def process(self):
+        super().process()
+        cfg = InstanceSettings.get_solo()
+        batch_size = cfg.page_batch_segmentation
         model = self.validated_data.get('model')
-        parts = self.validated_data.get('parts')
+        parts = self.validated_data.get('parts') or self.document.parts.all()
 
-        ocr_model_document, created = OcrModelDocument.objects.get_or_create(
-            document=self.document,
-            ocr_model=model,
-            defaults={'executed_on': timezone.now()}
-        )
-        if not created:
-            ocr_model_document.executed_on = timezone.now()
-            ocr_model_document.save()
-
-        for part in parts:
-            part.chain_tasks(
-                segment.si(instance_pk=part.pk,
-                           user_pk=self.user.pk,
-                           model_pk=model.pk,
-                           steps=self.validated_data.get('steps'),
-                           text_direction=self.validated_data.get('text_direction'),
-                           override=self.validated_data.get('override'))
+        if model:
+            ocr_model_document, created = OcrModelDocument.objects.get_or_create(
+                document=self.document,
+                ocr_model=model,
+                defaults={'executed_on': timezone.now()}
             )
+            if not created:
+                ocr_model_document.executed_on = timezone.now()
+                ocr_model_document.save()
+        for chunk in _chunks([p.pk for p in parts], batch_size):
+            sig = segment.si(
+                instance_pks=chunk,
+                user_pk=self.user.pk,
+                task_group_pk=self.task_group.pk,
+                model_pk=model.pk if model else None,
+                steps=self.validated_data['steps'],
+                text_direction=self.validated_data['text_direction'],
+                override=self.validated_data['override'],
+            )
+            # enqueue it directly
+            sig.apply_async()
 
 
 class SegTrainSerializer(ProcessSerializerMixin, serializers.Serializer):
+    PROCESS_NAME = 'segmentation training'
     parts = serializers.PrimaryKeyRelatedField(many=True,
                                                queryset=DocumentPart.objects.all())
     model = serializers.PrimaryKeyRelatedField(required=False,
@@ -920,7 +946,12 @@ class SegTrainSerializer(ProcessSerializerMixin, serializers.Serializer):
         self.fields['model'].queryset = OcrModel.objects.filter(
             job=OcrModel.MODEL_JOB_SEGMENT
         ).filter(
-            Q(public=True) | Q(owner=self.user)
+            # Note: Only an owner should be able to train on top of an existing model
+            # if the model is public, the user can only clone it (override=False)
+            Q(public=True)
+            | Q(owner=self.user)
+            | Q(ocr_model_rights__user=self.user)
+            | Q(ocr_model_rights__group__user=self.user)
         )
         self.fields['parts'].queryset = DocumentPart.objects.filter(document=self.document)
 
@@ -945,20 +976,21 @@ class SegTrainSerializer(ProcessSerializerMixin, serializers.Serializer):
         return data
 
     def process(self):
+        super().process()
         model = self.validated_data.get('model')
         override = self.validated_data.get('override')
 
-        if self.validated_data.get('model_name'):
-            file_ = model and model.file or None
+        if not model:
+            # Note: will clone default kraken model in the task
             model = OcrModel.objects.create(
                 owner=self.user,
-                name=self.validated_data['model_name'],
-                job=OcrModel.MODEL_JOB_RECOGNIZE,
-                file=file_,
-                file_size=file_.size if file_ else 0
+                name=self.validated_data.get('model_name'),
+                job=OcrModel.MODEL_JOB_SEGMENT,
+                file_size=0
             )
+
         elif not override:
-            model = model.clone_for_training(self.user, name=self.validated_data['model_name'])
+            model = model.clone_for_training(self.user, name=self.validated_data.get('model_name'))
 
         ocr_model_document, created = OcrModelDocument.objects.get_or_create(
             document=self.document,
@@ -970,9 +1002,129 @@ class SegTrainSerializer(ProcessSerializerMixin, serializers.Serializer):
             ocr_model_document.save()
 
         segtrain.delay(model_pk=model.pk if model else None,
+                       task_group_pk=self.task_group.pk,
                        part_pks=[part.pk for part in self.validated_data.get('parts')],
                        document_pk=self.document.pk,
                        user_pk=self.user.pk)
+
+
+class ImportSerializer(ProcessSerializerMixin, serializers.Serializer):
+    PROCESS_NAME = 'Import'
+    MODE_CHOICES = (
+        ('pdf', 'Import a pdf file.'),
+        ('iiif', 'Import from a iiif manifest.'),
+        ('mets', 'Import a mets file.'),
+        ('xml', 'Import from a xml file.')
+    )
+    mode = serializers.ChoiceField(choices=MODE_CHOICES)
+
+    transcription = serializers.PrimaryKeyRelatedField(
+        queryset=Transcription.objects.all(),
+        required=False)
+    name = serializers.CharField(required=False)
+    override = serializers.BooleanField(required=False)
+    upload_file = serializers.FileField(required=False)
+
+    iiif_uri = serializers.URLField(required=False)
+
+    METS_TYPE_CHOICES = (
+        ('local', _('Upload local file')),
+        ('url', _('download file from url')),
+    )
+    mets_type = serializers.ChoiceField(choices=METS_TYPE_CHOICES, required=False)
+    mets_uri = serializers.URLField(required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.mets_base_uri = None
+        self.fields['transcription'].queryset = Transcription.objects.filter(document=self.document)
+
+    def validate_iiif_uri(self, uri):
+        try:
+            content, total = clean_import_uri(uri, self.document, 'tmp.json')
+            self.file = ContentFile(content, name='iiif_manifest.json')
+            self.total = total
+        except FileImportError as e:
+            raise serializers.ValidationError(repr(e))
+
+    def validate_mets_uri(self, uri):
+        try:
+            self.mets_base_uri = os.path.dirname(uri)
+            content, total = clean_import_uri(uri, self.document, 'tmp.xml',
+                                              is_mets=True, mets_base_uri=self.mets_base_uri)
+            self.file = ContentFile(content, name='mets.xml')
+            self.total = total
+        except FileImportError as e:
+            raise serializers.ValidationError(repr(e))
+
+    def validate_upload_file(self, upload_file):
+        try:
+            parser = clean_upload_file(upload_file, self.document, self.user)
+            self.file = parser.file
+            self.total = parser.total
+        except FileImportError as e:
+            raise serializers.ValidationError(repr(e))
+
+    def validate(self, data):
+        data = super().validate(data)
+
+        # validate different modes
+        mode = data.get('mode')
+        if mode == 'iiif':
+            if 'iiif_uri' not in data:
+                raise serializers.ValidationError("'iiif_uri' is mandatory with mode 'iiif'.")
+
+        elif mode == 'mets':
+            if 'mets_type' not in data:
+                raise serializers.ValidationError("'mets_type' is mandatory with mode 'mets'.")
+            else:
+                if data.get('mets_type') == 'url':
+                    if 'mets_uri' not in data:
+                        raise serializers.ValidationError("'mets_uri' is mandatory with mode 'mets'. and type 'url'")
+                elif 'upload_file' not in data:
+                    raise serializers.ValidationError("'upload_file' is mandatory with mode 'mets'. and type 'local'")
+
+        elif mode == 'pdf':
+            if 'upload_file' not in data:
+                raise serializers.ValidationError("'upload_file' is mandatory with mode 'pdf'.")
+
+        elif mode == 'xml':
+            if 'upload_file' not in data:
+                raise serializers.ValidationError("'upload_file' is mandatory with mode 'xml'.")
+
+        if not settings.DISABLE_QUOTAS:
+            if not self.user.has_free_cpu_minutes():
+                raise serializers.ValidationError(_("You don't have any CPU minutes left."))
+
+        return data
+
+    def process(self):
+        super().process()
+        if 'name' in self.validated_data:
+            name = self.validated_data.get("name")
+        elif 'transcription' in self.validated_data:
+            name = self.validated_data.get('transcription').name
+        else:
+            name = ''
+        imp = DocumentImport(
+            document=self.document,
+            name=name,
+            override=self.validated_data.get('override') or False,
+            import_file=self.file,
+            total=self.total,
+            started_by=self.user,
+            with_mets=self.validated_data.get('mode') == 'mets',
+            mets_base_uri=self.mets_base_uri
+        )
+        imp.save()
+
+        document_import.delay(
+            document_pk=self.document.pk,
+            task_group_pk=self.task_group.pk,
+            import_pk=imp.pk,
+            user_pk=self.user.pk,
+            report_label=_('Import in %(document_name)s') % {'document_name': self.document.name}
+        )
 
 
 class TextualWitnessSerializer(serializers.ModelSerializer):
@@ -984,6 +1136,7 @@ class TextualWitnessSerializer(serializers.ModelSerializer):
 
 
 class TrainSerializer(ProcessSerializerMixin, serializers.Serializer):
+    PROCESS_NAME = 'recognition training'
     CHECK_GPU_QUOTA = True
     CHECK_DISK_QUOTA = True
 
@@ -1001,8 +1154,13 @@ class TrainSerializer(ProcessSerializerMixin, serializers.Serializer):
         self.fields['model'].queryset = OcrModel.objects.filter(
             job=OcrModel.MODEL_JOB_RECOGNIZE
         ).filter(
-            Q(public=True) | Q(owner=self.user)
-        )
+            # Note: Only an owner should be able to train on top of an existing model
+            # if the model is public, the user can only clone it (override=False)
+            Q(public=True)
+            | Q(owner=self.user)
+            | Q(ocr_model_rights__user=self.user)
+            | Q(ocr_model_rights__group__user=self.user)
+        ).distinct()  # prevent duplicates when model is shared with groups with multiple users
         self.fields['parts'].queryset = DocumentPart.objects.filter(document=self.document)
 
     def validate(self, data):
@@ -1021,20 +1179,19 @@ class TrainSerializer(ProcessSerializerMixin, serializers.Serializer):
         return data
 
     def process(self):
+        super().process()
         model = self.validated_data.get('model')
         override = self.validated_data.get('override')
 
-        if self.validated_data.get('model_name'):
-            file_ = model and model.file or None
+        if not model:
             model = OcrModel.objects.create(
                 owner=self.user,
-                name=self.validated_data['model_name'],
+                name=self.validated_data.get('model_name'),
                 job=OcrModel.MODEL_JOB_RECOGNIZE,
-                file=file_,
-                file_size=file_.size if file_ else 0
+                file_size=0
             )
         elif not override:
-            model = model.clone_for_training(self.user, name=self.validated_data['model_name'])
+            model = model.clone_for_training(self.user, name=self.validated_data.get('model_name'))
 
         ocr_model_document, created = OcrModelDocument.objects.get_or_create(
             document=self.document,
@@ -1046,14 +1203,19 @@ class TrainSerializer(ProcessSerializerMixin, serializers.Serializer):
             ocr_model_document.save()
 
         train.delay(transcription_pk=self.validated_data['transcription'].pk,
+                    task_group_pk=self.task_group.pk,
                     model_pk=model.pk if model else None,
                     part_pks=[part.pk for part in self.validated_data.get('parts')],
                     user_pk=self.user.pk)
 
 
 class TranscribeSerializer(ProcessSerializerMixin, serializers.Serializer):
-    parts = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=DocumentPart.objects.all())
+    from core.models import InstanceSettings
+    from core.tasks import _chunks
+    PROCESS_NAME = 'recognition'
+    parts = serializers.PrimaryKeyRelatedField(many=True,
+                                               queryset=DocumentPart.objects.all(),
+                                               required=False)
     model = serializers.PrimaryKeyRelatedField(
         queryset=OcrModel.objects.all())
     transcription = serializers.PrimaryKeyRelatedField(
@@ -1069,8 +1231,12 @@ class TranscribeSerializer(ProcessSerializerMixin, serializers.Serializer):
             document=self.document)
 
     def process(self):
+        super().process()
+        cfg = InstanceSettings.get_solo()
+        batch_size = cfg.page_batch_recognition
         model = self.validated_data.get('model')
         transcription = self.validated_data.get('transcription')
+        parts = self.validated_data.get('parts') or self.document.parts.all()
 
         ocr_model_document, created = OcrModelDocument.objects.get_or_create(
             document=self.document,
@@ -1080,20 +1246,41 @@ class TranscribeSerializer(ProcessSerializerMixin, serializers.Serializer):
         if not created:
             ocr_model_document.executed_on = timezone.now()
             ocr_model_document.save()
-
-        for part in self.validated_data.get('parts'):
-            part.chain_tasks(
-                transcribe.si(
-                    transcription_pk=transcription.pk,
-                    instance_pk=part.pk,
-                    model_pk=model.pk,
-                    user_pk=self.user.pk)
+        for chunk in _chunks([p.pk for p in parts], batch_size):
+            sig = transcribe.si(
+                instance_pks=chunk,
+                task_group_pk=self.task_group.pk,
+                transcription_pk=transcription.pk,
+                model_pk=model.pk,
+                user_pk=self.user.pk
             )
+            # enqueue it directly
+            sig.apply_async()
+
+
+class EditableMultipleChoiceField(serializers.MultipleChoiceField):
+    """Make choices a property, so it can be modified reliably.
+    Adapted from https://github.com/encode/django-rest-framework/issues/3383"""
+    _choices = dict()
+
+    def _set_choices(self, choices):
+        self.grouped_choices = fields.to_choices_dict(self._choices)
+        self._choices = fields.flatten_choices_dict(choices)
+        self.choice_strings_to_values = {
+            str(key): key for key in self._choices.keys()
+        }
+
+    def _get_choices(self):
+        return self._choices
+
+    choices = property(_get_choices, _set_choices)
 
 
 class AlignSerializer(ProcessSerializerMixin, serializers.Serializer):
-    parts = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=DocumentPart.objects.all())
+    PROCESS_NAME = 'alignment'
+    parts = serializers.PrimaryKeyRelatedField(many=True,
+                                               queryset=DocumentPart.objects.all(),
+                                               required=False)
 
     transcription = serializers.PrimaryKeyRelatedField(
         queryset=Transcription.objects.filter(archived=False),
@@ -1160,9 +1347,9 @@ class AlignSerializer(ProcessSerializerMixin, serializers.Serializer):
         min_value=0.0,
         max_value=1.0,
     )
-    region_types = serializers.MultipleChoiceField(
+    region_types = EditableMultipleChoiceField(
         required=True,
-        choices=[('Undefined', '(Undefined region type)'), ('Orphan', '(Orphan lines)')],
+        choices={'Undefined': '(Undefined region type)', 'Orphan': '(Orphan lines)'},
         help_text=_("Region types to include in the alignment."),
     )
     layer_name = serializers.CharField(
@@ -1175,10 +1362,14 @@ class AlignSerializer(ProcessSerializerMixin, serializers.Serializer):
         super().__init__(*args, **kwargs)
         self.fields['transcription'].queryset = self.document.transcriptions.filter(archived=False)
         self.fields['existing_witness'].queryset = TextualWitness.objects.filter(owner=self.user)
-        self.fields['region_types'].choices.update({
-            rt.id: rt.name
-            for rt in self.document.valid_block_types.all()
-        })
+        self.fields['region_types'].choices = {
+            **self.fields['region_types'].choices,
+            **{
+                str(rt.id): rt.name
+                for rt in self.document.valid_block_types.all()
+            },
+        }
+        self.fields['parts'].queryset = DocumentPart.objects.filter(document=self.document)
 
     def validate(self, data):
         data = super().validate(data)
@@ -1211,6 +1402,8 @@ class AlignSerializer(ProcessSerializerMixin, serializers.Serializer):
 
     def process(self):
         """Instantiate or set the witness to use, then enqueue the task(s)"""
+        super().process()
+
         transcription = self.validated_data.get("transcription")
         witness_file = self.validated_data.get("witness_file")
         existing_witness = self.validated_data.get("existing_witness")
@@ -1222,7 +1415,7 @@ class AlignSerializer(ProcessSerializerMixin, serializers.Serializer):
         full_doc = self.validated_data.get("full_doc", True)
         threshold = self.validated_data.get("threshold", 0.8)
         region_types = self.validated_data.get("region_types", ["Orphan", "Undefined"])
-        parts = self.validated_data.get("parts")
+        parts = self.validated_data.get("parts") or self.document.parts.all()
         layer_name = self.validated_data.get("layer_name")
 
         if existing_witness:
@@ -1238,6 +1431,7 @@ class AlignSerializer(ProcessSerializerMixin, serializers.Serializer):
         self.document.queue_alignment(
             parts=parts,
             user_pk=self.user.pk,
+            task_group_pk=self.task_group.pk,
             transcription_pk=transcription.pk,
             witness_pk=witness.pk,
             # handle empty strings, NoneType; allow some values that could be false

@@ -10,9 +10,11 @@ module.exports = {
         editor: "./src/editor/main.js",
         doclist: "./src/documentlist/main.js",
         docstasks: "./src/documentstasks/main.js",
+        documentDashboard: "./vue/exports/documentDashboard.js",
         globalNavigation: "./vue/exports/globalNavigation.js",
         projectDashboard: "./vue/exports/projectDashboard.js",
         projectsList: "./vue/exports/projectsList.js",
+        imagesPage: "./vue/exports/imagesPage.js",
     },
 
     output: {
@@ -39,7 +41,10 @@ module.exports = {
                 test: /\.(png|jpe?g|gif|woff|woff2|eot|ttf|otf|svg)$/i,
                 use: ["file-loader"],
             },
-            { test: /\.vue$/, use: ["vue-loader"] },
+            {
+                test: /\.vue$/,
+                use: [{ loader: "vue-loader", options: { prettify: false } }],
+            },
         ],
     },
 

@@ -12,6 +12,13 @@ const state = () => ({
 
 const getters = {
     /**
+     * The current value of the name filter.
+     */
+    nameFilter: (state) => {
+        const nameFilterObj = state.filters.find((filter) => filter.type === "name");
+        return nameFilterObj?.value || "";
+    },
+    /**
      * Number of tags currently selected in the tag filter.
      */
     tagCount: (_, getters) => {
@@ -45,7 +52,9 @@ const getters = {
      * Whether or not "untagged" is checked in the current tag filter.
      */
     untaggedSelected: (state) => {
-        return state.filters.find((filter) => filter.type === "tags")?.value?.includes("none");
+        return state.filters
+            .find((filter) => filter.type === "tags")
+            ?.value?.includes("none");
     },
 };
 

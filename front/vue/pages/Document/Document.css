@@ -1,4 +1,4 @@
-.escr-document-dashboard .escr-page {
+.escr-body #main.escr-vue-enabled .escr-document-dashboard .escr-page {
     padding-right: 0;
 }
 .escr-document-dashboard .escr-breadcrumbs {
@@ -9,14 +9,28 @@
     display: grid;
     gap: 24px;
     grid-template-columns: 56% 44%;
+    min-height: calc(100vh - 51px);
 }
 .escr-document-dashboard .escr-doc-left-grid,
 .escr-document-dashboard .escr-doc-right-grid {
     display: grid;
     gap: 24px;
     align-items: stretch;
-    height: calc(100vh - 75px);
+    min-height: 100%;
     max-height: calc(100vh - 75px);
+}
+@media (max-width: 1200px),
+(max-height: 680px) {
+    .escr-document-dashboard {
+        height: max(768px, calc(100vh - 16px));
+    }
+    .escr-document-dashboard .escr-grid-container {
+        height: max(calc(768px - 51px), calc(100% - 51px));
+    }
+    .escr-document-dashboard .escr-doc-left-grid,
+    .escr-document-dashboard .escr-doc-right-grid {
+        max-height: calc(100% - 75px);
+    }
 }
 
 /**
@@ -42,6 +56,7 @@
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
+    line-clamp: 3;
     overflow: hidden;
 }
 .escr-document-dashboard .escr-document-metadata {
@@ -54,7 +69,8 @@
     grid-area: tags;
     padding-right: 0;
 }
-.escr-document-dashboard .escr-document-tags .escr-card-header {
+.escr-document-dashboard .escr-document-tags .escr-card-header,
+.escr-document-dashboard .escr-document-tags .escr-loader-container {
     padding-right: 1rem;
 }
 .escr-document-dashboard .escr-tag-group-wrapped {
@@ -69,6 +85,8 @@
 .escr-document-dashboard .escr-document-tasks {
     grid-area: tasks;
     overflow: hidden;
+    display: flex;
+    flex-flow: column;
 }
 .escr-document-dashboard .escr-document-tasks .escr-card-header {
     margin-bottom: 0;
@@ -79,6 +97,7 @@
     padding: 0;
     height: 100%;
     max-height: calc(100% - 28px);
+    flex: 1 0 auto;
 }
 .escr-document-dashboard .escr-document-tasks ul {
     display: grid;
@@ -99,8 +118,30 @@
 .escr-document-dashboard .escr-document-tasks ul > li:last-of-type {
     border-bottom: none;
 }
-.escr-document-dashboard .escr-document-tasks ul > li .escr-spinner {
+.escr-document-dashboard .escr-spinner {
+    width: 24px;
+    height: 24px;
+    max-width: 24px;
+    max-height: 24px;
+}
+.escr-document-dashboard .escr-document-tasks ul > li .escr-spinner,
+.escr-document-dashboard .escr-document-tasks ul > li [class^="escr-status"] {
     margin-right: 1rem;
+}
+.escr-document-tasks ul > li .escr-status--complete {
+    color: var(--secondary);
+}
+.escr-document-tasks ul > li .escr-status--warning {
+    color: var(--at-risk);
+}
+.escr-document-tasks ul > li .escr-status--error {
+    color: var(--alert);
+}
+.escr-document-tasks ul > li .escr-status--inactive {
+    color: var(--background2);
+}
+.escr-document-tasks ul > li .meta .timestamp {
+    text-align: right;
 }
 .escr-document-dashboard .escr-document-tasks ul > li .meta {
     max-width: calc(100% - 76px);
@@ -155,6 +196,7 @@
         "chars chars chars"
         "ontology ontology ontology"
         "ontology ontology ontology";
+    min-height: calc(100% + 51px);
 }
 /* right side header and select element */
 .escr-document-dashboard .doc-stats-header {

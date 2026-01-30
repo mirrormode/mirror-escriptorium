@@ -210,9 +210,12 @@ class ZipParser(ParserDocument):
 
         with zipfile.ZipFile(self.file) as zfh:
             total = len(zfh.infolist())
+
+            # first loop to get all images
             for index, finfo in enumerate(zfh.infolist()):
                 if index < start_at:
                     continue
+
                 with zfh.open(finfo) as zipedfh:
                     try:
                         filename = os.path.basename(zipedfh.name)
@@ -247,13 +250,27 @@ class ZipParser(ParserDocument):
                             part.save()
                             self.post_process_image(part)
 
+                    except IndexError:
+                        # no file extension!?
+                        pass
+
+            # second loop for all xmls
+            for index, finfo in enumerate(zfh.infolist()):
+                if index < start_at:
+                    continue
+
+                with zfh.open(finfo) as zipedfh:
+                    try:
+                        filename = os.path.basename(zipedfh.name)
+                        file_extension = os.path.splitext(filename)[1][1:]
                         # xml
-                        elif file_extension in XML_EXTENSIONS:
+                        if file_extension in XML_EXTENSIONS:
                             parser = make_parser(self.document, zipedfh,
                                                  name=self.name, report=self.report)
 
                             for part in parser.parse(override=override, user=user):
                                 yield part
+
                     except IndexError:
                         # no file extension!?
                         pass
@@ -423,9 +440,9 @@ class METSZipParser(ZipParser, METSBaseParser):
 
             mets_file_content = None
             for xml_filename in xml_filenames:
-                with archive.open(xml_filename) as ziped_file:
+                with archive.open(xml_filename) as zipped_file:
                     try:
-                        root = etree.parse(ziped_file).getroot()
+                        root = etree.parse(zipped_file).getroot()
                         schemas = root.nsmap.values()
                     except (etree.XMLSyntaxError, KeyError):
                         logger.debug(f"Skipping file {xml_filename} in archive as it isn't a METS file")
@@ -461,11 +478,11 @@ class METSZipParser(ZipParser, METSBaseParser):
                     if info_list.index(mets_page.image) < start_at:
                         continue
 
-                    with archive.open(mets_page.image) as ziped_image:
-                        filename = os.path.basename(ziped_image.name)
+                    with archive.open(mets_page.image) as zipped_image:
+                        filename = os.path.basename(zipped_image.name)
                         image_source = "mets//{0}/{1}".format(os.path.basename(self.file.name), filename)
                         part = self.parse_image(user, total, index, start_at, filename,
-                                                ziped_image, image_source)
+                                                zipped_image, image_source)
                         # If we have a page with an image + multiple sources, we don't want to
                         # store the same metadata multiple times and spam the database for nothing
                         if not metadata_already_stored:
@@ -476,11 +493,11 @@ class METSZipParser(ZipParser, METSBaseParser):
                     if info_list.index(source) < start_at:
                         continue
 
-                    with archive.open(source) as ziped_source:
-                        filename = os.path.basename(ziped_source.name)
+                    with archive.open(source) as zipped_source:
+                        filename = os.path.basename(zipped_source.name)
 
                         try:
-                            parser = make_parser(self.document, ziped_source, name=f"{self.name} | {layer_name}", report=self.report, zip_allowed=False, pdf_allowed=False)
+                            parser = make_parser(self.document, zipped_source, name=f"{self.name} | {layer_name}", report=self.report, zip_allowed=False, pdf_allowed=False)
                             # We only want to override for the first imported source if there are multiple ones
                             for part in parser.parse(override=(override and index == 0), user=user):
                                 # If we have a page with an image + multiple sources, we don't want to
@@ -542,6 +559,7 @@ class XMLParser(ParserDocument):
         if self.schema_location in self.ACCEPTED_SCHEMAS:
             try:
                 response = requests.get(self.schema_location)
+                response.raise_for_status()
                 content = response.content
                 schema_root = etree.XML(content)
             except requests.exceptions.RequestException as e:
@@ -553,11 +571,13 @@ class XMLParser(ParserDocument):
                 try:
                     xmlschema = etree.XMLSchema(schema_root)
                     xmlschema.assertValid(self.root)
-                except (
-                    AttributeError,
-                    etree.DocumentInvalid,
-                    etree.XMLSyntaxError,
-                ) as e:
+                except etree.XMLSchemaParseError as e:
+                    logger.warning("Skipping schema validation (XSD compile failed): %s", e)
+                    if self.report:
+                        self.report.append(
+                            "Skipping schema validation (validator unavailable). %s" % OWN_RISK
+                        )
+                except (AttributeError, etree.DocumentInvalid, etree.XMLSyntaxError) as e:
                     if self.report:
                         self.report.append("Document didn't validate. %s, %s" % (e.args[0], OWN_RISK))
         else:
@@ -589,7 +609,10 @@ class XMLParser(ParserDocument):
     def get_transcription_content(self, lineTag):
         raise NotImplementedError
 
-    def make_transcription(self, line, lineTag, content, avg_confidence=None, user=None):
+    def get_glyphs(self, lineTag):
+        raise NotImplementedError
+
+    def make_transcription(self, line, lineTag, content, graphs=None, avg_confidence=None, user=None):
         try:
             # lazily creates the Transcription on the fly if need be cf transcription() property
             lt = LineTranscription.objects.get(
@@ -612,6 +635,10 @@ class XMLParser(ParserDocument):
             lt.content = content
             if avg_confidence:
                 lt.avg_confidence = avg_confidence
+
+            if graphs:
+                lt.graphs = graphs
+
             lt.save()
 
             # update the avg confidence across the whole transcription
@@ -721,19 +748,20 @@ class XMLParser(ParserDocument):
 
                             # needs to be done after line is created!
                             tc = self.get_transcription_content(lineTag)
+                            gs = self.get_graphs(lineTag)
                             ac = self.get_avg_confidence(lineTag)
                             if ac:
                                 self.all_line_confidences.append(ac)
                                 part_line_confidences.append(ac)
                             if tc:
-                                self.make_transcription(line, lineTag, tc, avg_confidence=ac, user=user)
+                                self.make_transcription(line, lineTag, tc, graphs=gs, avg_confidence=ac, user=user)
+
                     if part_line_confidences:
                         # if applicable, store max avg confidence / best transcription on document part
                         part_avg_confidence = mean(part_line_confidences)
                         if not max_avg_confidence or (max_avg_confidence and part_avg_confidence > max_avg_confidence):
                             part.max_avg_confidence = part_avg_confidence
 
-                # TODO: store glyphs too
                 logger.info("Uncompressed and parsed %s (%i page(s), %i block(s), %i line(s))" % (self.file.name, n_pages, n_blocks, n_lines))
                 part.calculate_progress()
                 yield part
@@ -837,7 +865,8 @@ The ALTO file should contain a Description/sourceImageInformation/fileName tag f
             strings = lineTag.findall("String", self.root.nsmap)
             last_segment = strings[-1]
             line.baseline = [(int(float(e.get('HPOS'))), int(float(e.get('VPOS')))) for e in strings]
-            line.baseline.append((int(float(last_segment.get('HPOS'))) + int(float(last_segment.get('WIDTH'))),
+            line.baseline.append((int(float(last_segment.get('HPOS')))
+                                  + int(float(last_segment.get('WIDTH'))),
                                   int(float(last_segment.get('VPOS')))))
 
         polygon = lineTag.find("Shape/Polygon", self.root.nsmap)
@@ -877,6 +906,17 @@ The ALTO file should contain a Description/sourceImageInformation/fileName tag f
         return " ".join(
             [e.get("CONTENT") for e in lineTag.findall("String", self.root.nsmap)]
         )
+
+    def get_graphs(self, lineTag):
+        graphs = []
+        for e in lineTag.findall("Glyph", self.root.nsmap):
+            coords = tuple(map(float, e.find('Polygon').get("POINTS").strip().split(" ")))
+            graphs.append({
+                'c': e.get("CONTENT"),
+                'poly': tuple(zip(coords[::2], coords[1::2])),
+                'confidence': e.get("GC")
+            })
+        return graphs
 
     def get_avg_confidence(self, lineTag):
         # WC attribute (a float between 0.0 and 1.0) is used for confidence
@@ -1010,6 +1050,16 @@ The PAGE file should contain an attribute imageFilename in Page tag for matching
                 ]
             )
 
+    def get_graphs(self, lineTag):
+        graphs = []
+        for e in lineTag.findall("Word/Glyph", self.root.nsmap):
+            graphs.append({
+                'c': e.find("TextEquiv/Unicode", self.root.nsmap).text,
+                'poly': self.clean_coords(e.find('Coords', self.root.nsmap)),
+                'confidence': e.find("TextEquiv", self.root.nsmap).get("conf")
+            })
+        return graphs
+
     def get_avg_confidence(self, lineTag):
         # PAGE XML can have content for each word inside a word tag or the whole line in textline tag
         words = lineTag.findall("Word", self.root.nsmap)
@@ -1061,7 +1111,10 @@ class IIIFManifestParser(ParserDocument):
             current_retry = current_retry + 1
             time.sleep(0.1 * current_retry)  # avoid being throttled; add a little backoff
             try:
-                response = requests.get(url, stream=True, verify=False, timeout=10)
+                headers = {
+                    'User-Agent': 'eScriptorium'
+                }
+                response = requests.get(url, headers=headers, stream=True, verify=False, timeout=10)
                 response.raise_for_status()
                 return response
 

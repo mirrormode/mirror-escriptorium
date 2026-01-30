@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime
 from glob import glob
 from os import makedirs, path
@@ -27,18 +28,21 @@ from django.db.models.functions import Coalesce, Length
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.forms import ValidationError
-from django.template.defaultfilters import slugify
 from django.utils.functional import cached_property
+from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from django_prometheus.models import ExportModelOperationsMixin
 from easy_thumbnails.files import get_thumbnailer
+
+# isort: off
+import torch  # noqa: F401  # must be imported before kraken to avoid 'random_device could not be read'
 from kraken import blla, rpred
-from kraken.binarization import nlbin
+# isort: on
+from kraken.containers import BaselineLine, Segmentation
 from kraken.kraken import SEGMENTATION_DEFAULT_MODEL
 from kraken.lib import models as kraken_models
 from kraken.lib import vgsl
 from kraken.lib.segmentation import calculate_polygonal_environment
-from kraken.lib.util import is_bitonal
 from ordered_model.models import OrderedModel, OrderedModelManager
 from PIL import Image
 from shapely import affinity
@@ -46,10 +50,10 @@ from shapely.geometry import LineString, Polygon
 from skimage.measure import approximate_polygon
 from sklearn import preprocessing
 from sklearn.cluster import DBSCAN
+from solo.models import SingletonModel
 
 from core.tasks import (
     align,
-    binarize,
     convert,
     generate_part_thumbnails,
     lossless_compression,
@@ -60,6 +64,7 @@ from core.tasks import (
 )
 from core.utils import ColorField
 from core.validators import JSONSchemaValidator
+from escriptorium.celery import app as celery_app
 from reporting.models import TASK_FINAL_STATES, TaskReport
 from users.consumers import send_event
 from users.models import User
@@ -74,6 +79,39 @@ class ProcessFailureException(Exception):
 
 class AlreadyProcessingException(Exception):
     pass
+
+
+class CascadeUpdate():
+    """
+    This base class allows to update the updated_at date of parent models on save of this model
+    so that the most recent appears first in the UI.
+    For example if a user changes a line transcription the dates of its Line, DocumentPart, Document and Project will be changed automatically.
+    Avoid doing it for asynchronous processes doing a lot of queries (like import/export/training etc)
+    Note: we are not using signals for this because they are hard to invalidate (not thread safe)
+    """
+    cascade_to = NotImplementedError
+    _CASCADE_UPDATE_DISABLE = False
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+
+        if (celery_app.current_task is None   # check if we are an asynchronous task
+                and not CascadeUpdate._CASCADE_UPDATE_DISABLE):  # disable cascade update for this whole process
+            getattr(self, self.cascade_to).save()
+
+    @staticmethod
+    @contextmanager
+    def bypass():
+        """
+        allows to disable CascadeUpdate behavior from inside a code block:
+        with CascadeUpdate.bypass():
+            MyInstance.save()  # won't trigger cascade update
+        """
+        try:
+            CascadeUpdate._CASCADE_UPDATE_DISABLE = True
+            yield None
+        finally:
+            CascadeUpdate._CASCADE_UPDATE_DISABLE = False
 
 
 class Typology(ExportModelOperationsMixin("Typology"), models.Model):
@@ -220,11 +258,13 @@ class AnnotationTaxonomy(OrderedModel):
         return self.name
 
 
-class Annotation(models.Model):
+class Annotation(CascadeUpdate, models.Model):
     taxonomy = models.ForeignKey(AnnotationTaxonomy, on_delete=models.CASCADE)
     comments = ArrayField(models.TextField(), null=True, blank=True)
 
     part = models.ForeignKey("core.DocumentPart", on_delete=models.CASCADE)
+
+    cascade_to = 'part'
 
     class Meta:
         abstract = True
@@ -357,19 +397,23 @@ class Script(ExportModelOperationsMixin("Script"), models.Model):
         return self.name
 
 
-class DocumentMetadata(ExportModelOperationsMixin("DocumentMetadata"), models.Model):
+class DocumentMetadata(ExportModelOperationsMixin("DocumentMetadata"), CascadeUpdate, models.Model):
     document = models.ForeignKey("core.Document", on_delete=models.CASCADE)
     key = models.ForeignKey(Metadata, on_delete=models.CASCADE)
     value = models.CharField(max_length=512)
+
+    cascade_to = 'document'
 
     def __str__(self):
         return "%s:%s" % (self.document.name, self.key.name)
 
 
-class DocumentPartMetadata(models.Model):
+class DocumentPartMetadata(CascadeUpdate, models.Model):
     part = models.ForeignKey("core.DocumentPart", on_delete=models.CASCADE, related_name="metadata")
     key = models.ForeignKey(Metadata, on_delete=models.CASCADE)
     value = models.CharField(max_length=512)
+
+    cascade_to = 'part'
 
     def __str__(self):
         return "%s:%s" % (self.part.name, self.key.name)
@@ -380,8 +424,9 @@ class ProjectManager(models.Manager):
         # return the list of EDITABLE projects
         # allows to add documents to it
         return (
-            self.filter(Q(owner=user) | Q(shared_with_users=user))
-            #   | Q(shared_with_groups__user=user))
+            self.filter(Q(owner=user)
+                        | Q(shared_with_users=user)
+                        | Q(shared_with_groups__user=user))
             .distinct()
         )
 
@@ -391,7 +436,7 @@ class ProjectManager(models.Manager):
         return self.filter(
             Q(owner=user)
             | Q(shared_with_users=user)
-            #   | Q(shared_with_groups__user=user))
+            | Q(shared_with_groups__user=user)
             | (
                 Q(documents__shared_with_users=user)
                 | Q(documents__shared_with_groups__user=user)
@@ -433,7 +478,7 @@ class Project(ExportModelOperationsMixin("Project"), models.Model):
         return self.name
 
     def make_slug(self):
-        slug = slugify(self.name)
+        slug = slugify(self.name, allow_unicode=True)
         # check unicity
         exists = Project.objects.filter(slug=slug).count()
         if not exists:
@@ -442,7 +487,7 @@ class Project(ExportModelOperationsMixin("Project"), models.Model):
             self.slug = slug[:40] + hex(int(time.time()))[2:]
 
     def save(self, *args, **kwargs):
-        if not self.pk:
+        if not self.slug:
             self.make_slug()
         super().save(*args, **kwargs)
 
@@ -454,7 +499,7 @@ class DocumentManager(models.Manager):
                 Q(owner=user)
                 | Q(project__owner=user)
                 | Q(project__shared_with_users=user)
-                #   | Q(project__shared_with_groups__user=user))
+                | Q(project__shared_with_groups__user=user)
                 | (Q(shared_with_users=user) | Q(shared_with_groups__user=user))
             )
             .exclude(workflow_state=Document.WORKFLOW_STATE_ARCHIVED)
@@ -463,7 +508,7 @@ class DocumentManager(models.Manager):
         )
 
 
-class Document(ExportModelOperationsMixin("Document"), models.Model):
+class Document(ExportModelOperationsMixin("Document"), CascadeUpdate, models.Model):
     WORKFLOW_STATE_DRAFT = 0
     WORKFLOW_STATE_PUBLISHED = 2  # viewable by the world
     WORKFLOW_STATE_ARCHIVED = 3  #
@@ -558,6 +603,8 @@ class Document(ExportModelOperationsMixin("Document"), models.Model):
     tags = models.ManyToManyField(DocumentTag, blank=True, related_name='tags_document')
 
     objects = DocumentManager()
+
+    cascade_to = 'project'
 
     class Meta:
         ordering = ["-updated_at"]
@@ -849,7 +896,7 @@ def document_images_path(instance, filename):
     return "documents/{0}/{1}".format(instance.document.pk, filename)
 
 
-class DocumentPart(ExportModelOperationsMixin("DocumentPart"), OrderedModel):
+class DocumentPart(ExportModelOperationsMixin("DocumentPart"), CascadeUpdate, OrderedModel):
     """
     Represents a physical part of a larger document that is usually a page
     """
@@ -859,13 +906,6 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), OrderedModel):
     original_filename = models.CharField(max_length=1024, blank=True)
     image_file_size = models.BigIntegerField()
     source = models.CharField(max_length=1024, blank=True)
-    bw_backend = models.CharField(max_length=128, default="kraken")
-    bw_image = models.ImageField(
-        upload_to=document_images_path,
-        null=True,
-        blank=True,
-        help_text=_("Binarized image needs to be the same size as original image."),
-    )
     typology = models.ForeignKey(
         DocumentPartType, null=True, blank=True, on_delete=models.SET_NULL
     )
@@ -908,6 +948,8 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), OrderedModel):
     # this is denormalized because it's too heavy to calculate on the fly
     transcription_progress = models.PositiveSmallIntegerField(default=0)
 
+    cascade_to = 'document'
+
     class Meta(OrderedModel.Meta):
         pass
 
@@ -923,16 +965,6 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), OrderedModel):
     @property
     def converted(self):
         return self.workflow_state >= self.WORKFLOW_STATE_CONVERTED
-
-    @property
-    def binarized(self):
-        try:
-            self.bw_image.file
-        except ValueError:
-            # catches ValueError: The 'bw_image' attribute has no file associated with it.
-            return False
-        else:
-            return True
 
     @property
     def segmented(self):
@@ -1116,7 +1148,7 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), OrderedModel):
         if self.workflow_state == self.WORKFLOW_STATE_ALIGNED:
             w["align"] = "done"
 
-        for report in self.reports.filter(method__in=["core.tasks.binarize", "core.tasks.segment", "core.tasks.transcribe", "core.tasks.align"]):
+        for report in self.reports.filter(method__in=["core.tasks.segment", "core.tasks.transcribe", "core.tasks.align"]):
             # Only the last registered state for each group of tasks will be kept
             short_name = report.method.split(".")[-1]
             if report.workflow_state == TaskReport.WORKFLOW_STATE_QUEUED:
@@ -1230,10 +1262,6 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), OrderedModel):
         if self.workflow_state < self.WORKFLOW_STATE_CONVERTED:
             self.workflow_state = self.WORKFLOW_STATE_CONVERTED
 
-        with Image.open(self.image.path) as im:
-            if is_bitonal(im):
-                self.bw_image = self.image
-
         self.save()
 
     def compress(self):
@@ -1254,29 +1282,6 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), OrderedModel):
             os.rename(opti_name, self.image.file.name)
             self.image_file_size = self.image.size
             self.save()
-
-    def binarize(self, threshold=None):
-        fname = os.path.basename(self.image.file.name)
-        # should be formatted to png already by lossless_compression but better safe than sorry
-        form = None
-        f_, ext = os.path.splitext(self.image.file.name)
-        if ext[1] in [".jpg", ".jpeg", ".JPG", ".JPEG", ""]:
-            if ext:
-                logger.warning("jpeg does not support 1bpp images. Forcing to png.")
-            form = "png"
-            fname = "%s.%s" % (f_, form)
-        bw_file_name = "bw_" + fname
-        bw_file = os.path.join(os.path.dirname(self.image.file.name), bw_file_name)
-        with Image.open(self.image.path) as im:
-            # threshold, zoom, escale, border, perc, range, low, high
-            if threshold is not None:
-                res = nlbin(im, threshold)
-            else:
-                res = nlbin(im)
-            res.save(bw_file, format=form)
-
-        self.bw_image = document_images_path(self, bw_file_name)
-        self.save()
 
     def segment(
         self,
@@ -1302,16 +1307,6 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), OrderedModel):
         #    &  seg_type [None, 'bbox', 'baselines']
 
         im = Image.open(self.image.file.name)
-        # will be fixed sometime in the future
-        # if model_.one_channel_mode == '1':
-        #     # TODO: need to binarize, probably not live...
-        #     if not self.bw_image:
-        #         self.binarize()
-        #     im = Image.open(self.bw_image.file.name)
-        # elif model_.one_channel_mode == 'L':
-        #     im = Image.open(self.image.file.name).convert('L')
-        # else:
-        #     im = Image.open(self.image.file.name)
 
         options = {
             "device": "cpu",
@@ -1330,7 +1325,7 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), OrderedModel):
             res = blla.segment(im, **options)
 
             if steps in ["regions", "both"]:
-                for region_type, regions in res["regions"].items():
+                for region_type, regions in res.regions.items():
                     try:
                         typo, created = self.document.valid_block_types.get_or_create(
                             name=region_type)
@@ -1342,14 +1337,14 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), OrderedModel):
                         Block.objects.create(
                             document_part=self,
                             typology=typo,
-                            box=region,
+                            box=region.boundary,
                         )
 
             regions = self.blocks.all()
             if steps in ["lines", "both"]:
-                for line in res["lines"]:
-                    mask = line["boundary"] if line["boundary"] is not None else None
-                    baseline = line["baseline"]
+                for line in res.lines:
+                    mask = line.boundary if line.boundary is not None else None
+                    baseline = line.baseline
 
                     # calculate if the center of the line is contained in one of the region
                     # (pick the first one that matches)
@@ -1357,13 +1352,18 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), OrderedModel):
                     region = next(
                         (r for r in regions if Polygon(r.box).contains(center)), None
                     )
+                    # Extract type from new tags structure: {'type': [{'type': 'value'}]}
+                    line_type_name = None
+                    if line.tags and "type" in line.tags and len(line.tags["type"]) > 0:
+                        line_type_name = line.tags["type"][0].get("type")
+
                     try:
                         typo, created = self.document.valid_line_types.get_or_create(
-                            name=line["tags"].get("type"))
+                            name=line_type_name)
                     except LineType.MultipleObjectsReturned:
                         # Note: this should not happen if the modelisation was alright
                         # but for now we hack
-                        typo = self.document.valid_line_types.filter(name=line["tags"].get("type"))[0]
+                        typo = self.document.valid_line_types.filter(name=line_type_name)[0]
                     Line.objects.create(
                         document_part=self,
                         typology=typo,
@@ -1402,24 +1402,22 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), OrderedModel):
                     # bypass lines without baseline
                     continue
                 else:
-                    bounds = {
-                        "lines": [
-                            {
-                                "baseline": line.baseline,
-                                "boundary": line.mask,
-                                "text_direction": text_direction,
-                                "tags": {'type': line.typology and line.typology.name or 'default'},
-                            }
-                        ],  # self.document.main_script.name
-                        "type": "baselines",
-                        # 'selfcript_detection': True
-                    }
+                    bll = BaselineLine(id='foo',
+                                       baseline=line.baseline,
+                                       boundary=line.mask,
+                                       language=None)
+                    seg = Segmentation(type='baselines',
+                                       imagename='/dummy.png',
+                                       text_direction=text_direction,
+                                       script_detection=False,
+                                       lines=[bll],
+                                       language=None)
 
                 it = rpred.rpred(
                     model_,
                     im,
-                    bounds=bounds,
-                    pad=16,  # TODO: % of the image?
+                    bounds=seg,
+                    pad=16,
                     bidi_reordering=reorder
                 )
                 lt, created = LineTranscription.objects.get_or_create(
@@ -1488,26 +1486,15 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), OrderedModel):
                 sig.link(lossless_compression.si(instance_pk=self.pk, **kwargs))
             tasks.append(sig)
 
-        if task_name == 'binarize':
-            tasks.append(binarize.si(instance_pk=self.pk,
-                                     report_label='Binarize in %s' % self.document.name,
-                                     **kwargs))
-
         if (task_name == 'segment'):
-            tasks.append(segment.si(instance_pk=self.pk,
-                                    report_label='Segment in %s' % self.document.name,
-                                    **kwargs))
+            tasks.append(segment.si(instance_pks=[self.pk], report_label=f'Segment in {self.document.name}', **kwargs))
 
         if task_name == 'transcribe':
             if not self.segmented:
                 kw = kwargs.copy()
                 kw.pop('model_pk')  # we don't want to transcribe with a segmentation model
-                tasks.append(segment.si(instance_pk=self.pk,
-                                        report_label='Segment in %s' % self.document.name,
-                                        **kw))
-            tasks.append(transcribe.si(instance_pk=self.pk,
-                                       report_label='Transcribe in %s' % self.document.name,
-                                       **kwargs))
+                tasks.append(segment.si(instance_pks=[self.pk], report_label=f'Segment in {self.document.name}', **kwargs))
+            tasks.append(transcribe.si(instance_pks=[self.pk], report_label=f'Transcribe in {self.document.name}', **kwargs))
 
         if commit:
             self.chain_tasks(*tasks)
@@ -1587,14 +1574,6 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), OrderedModel):
             # save the updated file name in db
             self.image = update_name(self.image.name)
 
-        # rotate bw image
-        if self.bw_image:
-            with Image.open(self.bw_image.file.name) as im:
-                rim = im.rotate(360 - angle, expand=True)
-                rim.save(update_name(self.bw_image.file.name))
-                rim.close()
-                self.bw_image = update_name(self.bw_image.name)
-
         self.save()
 
         # we need this one right away
@@ -1647,12 +1626,6 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), OrderedModel):
             cim = im.crop((x1, y1, x2, y2))
             cim.save(self.image.file.name)
             cim.close()
-
-        if self.bw_image:
-            with Image.open(self.image.file.name) as im:
-                cim = im.crop((x1, y1, x2, y2))
-                cim.save(self.image.file.name)
-                cim.close()
 
         for line in self.lines.all():
             if line.baseline:
@@ -1707,7 +1680,7 @@ def validate_3_points(value):
         )
 
 
-class Block(ExportModelOperationsMixin("Block"), OrderedModel, models.Model):
+class Block(ExportModelOperationsMixin("Block"), OrderedModel, CascadeUpdate, models.Model):
     """
     Represents a visually close group of graphemes (characters) bound by the same semantic
     example: a paragraph, a margin note or floating text
@@ -1724,6 +1697,8 @@ class Block(ExportModelOperationsMixin("Block"), OrderedModel, models.Model):
     order_with_respect_to = "document_part"
 
     external_id = models.CharField(max_length=128, blank=True, null=True)
+
+    cascade_to = 'document_part'
 
     class Meta(OrderedModel.Meta):
         pass
@@ -1790,7 +1765,7 @@ class LineManager(OrderedModelManager):
                          transcription=transcription))))
 
 
-class Line(OrderedModel):  # Versioned,
+class Line(CascadeUpdate, OrderedModel):
     """
     Represents a segmented line from a DocumentPart
     """
@@ -1822,6 +1797,8 @@ class Line(OrderedModel):  # Versioned,
     external_id = models.CharField(max_length=128, blank=True, null=True)
 
     objects = LineManager()
+
+    cascade_to = 'document_part'
 
     class Meta(OrderedModel.Meta):
         pass
@@ -1882,6 +1859,7 @@ class Transcription(ExportModelOperationsMixin("Transcription"), models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     archived = models.BooleanField(default=False)
     avg_confidence = models.FloatField(null=True, blank=True)
+    comments = models.TextField(null=True, blank=True)
 
     DEFAULT_NAME = "manual"
 
@@ -1896,6 +1874,7 @@ class Transcription(ExportModelOperationsMixin("Transcription"), models.Model):
         if self.name == self.DEFAULT_NAME:
             raise ProtectedObjectException
         else:
+            self.name += ' (archived ' + datetime.strftime(datetime.now(), '%y/%m/%d-%H:%M:%S') + ')'
             self.archived = True
             self.save()
 
@@ -1907,7 +1886,7 @@ class Transcription(ExportModelOperationsMixin("Transcription"), models.Model):
 
 
 class LineTranscription(
-    ExportModelOperationsMixin("LineTranscription"), Versioned, models.Model
+        ExportModelOperationsMixin("LineTranscription"), Versioned, CascadeUpdate, models.Model
 ):
     """
     Represents a transcribed line of a document part in a given transcription
@@ -1957,6 +1936,7 @@ class LineTranscription(
         Line, null=True, on_delete=models.CASCADE, related_name="transcriptions"
     )
     version_ignore_fields = ("line", "transcription")
+    cascade_to = 'line'
 
     class Meta:
         unique_together = ["line", "transcription"]
@@ -2040,6 +2020,7 @@ class OcrModel(ExportModelOperationsMixin("OcrModel"), Versioned, models.Model):
             file_size=self.file.size,
         )
         model.file = File(self.file, name=f'{name}.mlmodel')
+        # Note: this copy the actual file on the file system
         model.save()
 
         # if not model.public:
@@ -2053,15 +2034,17 @@ class OcrModel(ExportModelOperationsMixin("OcrModel"), Versioned, models.Model):
 
         return model
 
-    def segtrain(self, document, parts_qs, user=None):
+    def segtrain(self, document, parts_qs, task_group_pk=None, user=None):
         segtrain.delay(model_pk=self.pk,
+                       task_group_pk=task_group_pk,
                        part_pks=list(parts_qs.values_list('pk', flat=True)),
                        document_pk=document.pk,
                        user_pk=user and user.pk or None)
 
-    def train(self, parts_qs, transcription, user=None):
+    def train(self, parts_qs, transcription, task_group_pk=None, user=None):
         train.delay(transcription_pk=transcription.pk,
                     model_pk=self.pk,
+                    task_group_pk=task_group_pk,
                     part_pks=list(parts_qs.values_list('pk', flat=True)),
                     user_pk=user and user.pk or None)
 
@@ -2099,10 +2082,18 @@ class OcrModel(ExportModelOperationsMixin("OcrModel"), Versioned, models.Model):
         os.rename(tmp_filename, target_filename)
         super().revert(revision)
 
+    def delete(self):
+        self.flush_history()
+        super().delete()
+
     def delete_revision(self, revision):
         for version in self.versions:
             if version["revision"] == revision:
-                os.remove(os.path.join(settings.MEDIA_ROOT, version["data"]["file"]))
+                try:
+                    os.remove(os.path.join(settings.MEDIA_ROOT, version["data"]["file"]))
+                except FileNotFoundError:
+                    logger.warning("File not found while trying to delete the model version %s",
+                                   version['data']['file'])
                 break
         super().delete_revision(revision)
 
@@ -2184,5 +2175,21 @@ class TextualWitness(models.Model):
 def delete_thumbnails(sender, instance, using, **kwargs):
     thumbnailer = get_thumbnailer(instance.image)
     thumbnailer.delete()
-    thumbnailer = get_thumbnailer(instance.bw_image)
-    thumbnailer.delete()
+
+
+class InstanceSettings(SingletonModel):
+    page_batch_segmentation = models.IntegerField(
+        default=1,
+        help_text="Pages per segmentation task"
+    )
+    page_batch_recognition = models.IntegerField(
+        default=1,
+        help_text="Pages per transcription task"
+    )
+
+    class Meta:
+        verbose_name = "Instance setting"
+        verbose_name_plural = "Instance settings"
+
+    def __str__(self):
+        return "Instance settings"

@@ -50,6 +50,7 @@
                                 :disabled="loading"
                                 :tags="documentTags"
                                 :on-filter="onFilterDocuments"
+                                search-placeholder="Search documents..."
                             />
                             <EscrButton
                                 label="Create New"
@@ -72,14 +73,16 @@
                             />
                         </div>
                     </div>
-                    <div class="table-container">
+                    <div
+                        v-if="documents.length"
+                        class="table-container"
+                    >
                         <EscrTable
-                            v-if="documents.length"
                             item-key="pk"
                             :headers="headers"
                             :items="documents"
                             :on-sort="sortDocuments"
-                            :sort-disabled="loading"
+                            :disabled="loading"
                             :linkable="true"
                         >
                             <template #actions="{ item }">
@@ -109,18 +112,6 @@
                                 </EscrButton>
                             </template>
                         </EscrTable>
-                        <div
-                            v-else-if="!loading"
-                            class="escr-empty-msg"
-                        >
-                            There are no documents to display.
-                        </div>
-                        <div
-                            v-else
-                            class="escr-empty-msg"
-                        >
-                            Loading...
-                        </div>
                         <EscrButton
                             v-if="nextPage"
                             label="Load more"
@@ -131,6 +122,11 @@
                             :on-click="async () => await fetchNextPage()"
                         />
                     </div>
+                    <EscrLoader
+                        v-else
+                        :loading="loading"
+                        no-data-message="There are no documents to display."
+                    />
                 </div>
                 <!-- delete project modal -->
                 <ConfirmModal
@@ -174,6 +170,7 @@ import ConfirmModal from "../../components/ConfirmModal/ConfirmModal.vue";
 import EditDocumentModal from "../../components/EditDocumentModal/EditDocumentModal.vue";
 import EditProjectModal from "../../components/EditProjectModal/EditProjectModal.vue";
 import EscrButton from "../../components/Button/Button.vue";
+import EscrLoader from "../../components/Loader/Loader.vue";
 import EscrPage from "../Page/Page.vue";
 import EscrTable from "../../components/Table/Table.vue";
 import EscrTags from "../../components/Tags/Tags.vue";
@@ -198,6 +195,7 @@ export default {
         EditDocumentModal,
         EditProjectModal,
         EscrButton,
+        EscrLoader,
         EscrPage,
         EscrTable,
         EscrTags,
@@ -323,7 +321,7 @@ export default {
                     panel: SharePanel,
                 },
             ];
-            // if search is enabled on the index, add search as first item
+            // if search is enabled on the instance, add search as first item
             if (!this.searchDisabled) {
                 actions.unshift({
                     data: {

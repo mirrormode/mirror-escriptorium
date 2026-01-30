@@ -1,11 +1,11 @@
-FROM node:12-alpine as frontend
+FROM docker.io/library/node:12-alpine as frontend
 
 WORKDIR /build
 COPY ./front /build
 RUN npm ci && npm run production
 
 # Pull official base image
-FROM registry.gitlab.com/scripta/escriptorium/base:0.13.8-django-4.1
+FROM registry.gitlab.com/scripta/escriptorium/base:kraken6
 
 # try to autodetect number of cpus available
 # ENV NGINX_WORKER_PROCESSES auto
@@ -28,6 +28,7 @@ COPY ./app/apps /usr/src/app/apps
 COPY ./app/escriptorium /usr/src/app/escriptorium
 COPY ./app/locale /usr/src/app/locale
 COPY ./app/homepage /usr/src/app/homepage
+COPY ./app/contributors /usr/src/app/contributors
 COPY --from=frontend /build/dist /usr/src/app/front
 
 # run entrypoint.sh

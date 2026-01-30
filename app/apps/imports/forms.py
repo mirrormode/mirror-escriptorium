@@ -26,7 +26,11 @@ class FileImportError(Exception):
 
 def clean_uri(uri, document, tempfile, is_mets=False, mets_base_uri=None):
     try:
-        resp = requests.get(uri)
+        headers = {
+            'User-Agent': 'eScriptorium'
+        }
+        resp = requests.get(uri, headers=headers)
+        resp.raise_for_status()
         content = resp.content
         buf = io.BytesIO(content)
         buf.name = tempfile
@@ -35,6 +39,8 @@ def clean_uri(uri, document, tempfile, is_mets=False, mets_base_uri=None):
                              mets_base_uri=mets_base_uri)
         parser.validate()
         return content, parser.total
+    except requests.exceptions.HTTPError as e:
+        raise FileImportError(_("Failed to download the document pointed to by the given uri ({error}).").format(error=e))
     except requests.exceptions.RequestException:
         raise FileImportError(_("The document is unreachable, unreadable or the host timed out."))
     except json.decoder.JSONDecodeError:
@@ -195,6 +201,7 @@ class ImportForm(BootstrapFormMixin, forms.Form):
 
     def process(self):
         document_import.delay(
+            document_pk=self.document.pk,
             import_pk=self.instance.pk,
             user_pk=self.user.pk,
             report_label=_('Import in %(document_name)s') % {'document_name': self.document.name}
@@ -209,13 +216,17 @@ class ExportForm(RegionTypesFormMixin, BootstrapFormMixin, forms.Form):
         (export_format, export["label"])
         for export_format, export in ENABLED_EXPORTERS.items()
     )
-    parts = forms.ModelMultipleChoiceField(queryset=None)
+    parts = forms.ModelMultipleChoiceField(queryset=None, required=False)
     transcription = forms.ModelChoiceField(queryset=Transcription.objects.all())
     file_format = forms.ChoiceField(choices=FORMAT_CHOICES, initial=ALTO_FORMAT)
     include_images = forms.BooleanField(
         initial=False, required=False,
         label=_('Include images'),
         help_text=_("Will significantly increase the time to produce and download the export."))
+    include_characters = forms.BooleanField(
+        initial=False, required=False,
+        label=_("Include character bounding boxes."),
+        help_text=_("This data is only present for transcriptions coming from automatic recognition and is invalidated by manual edition."))
 
     def __init__(self, document, user, *args, **kwargs):
         self.document = document
@@ -225,12 +236,6 @@ class ExportForm(RegionTypesFormMixin, BootstrapFormMixin, forms.Form):
                                                                              document=self.document)
         self.fields['parts'].queryset = DocumentPart.objects.filter(document=self.document)
 
-    def clean_parts(self):
-        parts = self.cleaned_data['parts']
-        if len(parts) < 1:
-            raise forms.ValidationError(_("Select at least one image to export."))
-        return parts
-
     def clean(self):
         # If quotas are enforced, assert that the user still has free CPU minutes
         if not settings.DISABLE_QUOTAS and not self.user.has_free_cpu_minutes():
@@ -239,7 +244,8 @@ class ExportForm(RegionTypesFormMixin, BootstrapFormMixin, forms.Form):
         return super().clean()
 
     def process(self):
-        parts = self.cleaned_data['parts']
+        # allow no parts = all parts
+        parts = self.cleaned_data['parts'] or self.document.parts.all()
         file_format = self.cleaned_data['file_format']
         transcription = self.cleaned_data['transcription']
 
@@ -249,6 +255,7 @@ class ExportForm(RegionTypesFormMixin, BootstrapFormMixin, forms.Form):
                               self.cleaned_data['region_types'],
                               document_pk=self.document.pk,
                               include_images=self.cleaned_data['include_images'],
+                              include_characters=self.cleaned_data['include_characters'],
                               user_pk=self.user.pk,
                               report_label=_('Export %(document_name)s') % {'document_name': self.document.name})
 
