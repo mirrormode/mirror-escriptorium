@@ -437,7 +437,7 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'core.pagination.CustomPagination',
     'PAGE_SIZE': 10,
-    'DEFAULT_SCHEMA_CLASS': 'api.schema.NestedAutoSchema',
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.UserRateThrottle',
         'rest_framework.throttling.AnonRateThrottle',
@@ -482,10 +482,6 @@ POST /api/v1/token-auth/
     ],
     'ENUM_ADD_EXPLICIT_BLANK_NULL_CHOICE': False,
     'SERVE_PERMISSIONS': ['rest_framework.permissions.IsAuthenticated'],
-    'SCHEMA_COERCE_PATH_PK_SUFFIX': True,
-    'POSTPROCESSING_HOOKS': [
-        'api.schema_hooks.fix_nested_pk_types',
-    ],
     'SECURITY_SCHEMES': {
         'tokenAuth': {
             'type': 'http',

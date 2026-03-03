@@ -1215,43 +1215,11 @@ class BlockViewSet(DocumentPermissionMixin, ModelViewSet):
                 .filter(document_part__document=self.kwargs['document_pk']))
 
 
-@extend_schema_view(
-    list=extend_schema(
-        parameters=[
-            OpenApiParameter("document_pk", OpenApiTypes.INT, OpenApiParameter.PATH),
-            OpenApiParameter("part_pk", OpenApiTypes.INT, OpenApiParameter.PATH),
-        ]
-    ),
-    retrieve=extend_schema(
-        parameters=[
-            OpenApiParameter("document_pk", OpenApiTypes.INT, OpenApiParameter.PATH),
-            OpenApiParameter("part_pk", OpenApiTypes.INT, OpenApiParameter.PATH),
-        ]
-    ),
-    create=extend_schema(
-        parameters=[
-            OpenApiParameter("document_pk", OpenApiTypes.INT, OpenApiParameter.PATH),
-            OpenApiParameter("part_pk", OpenApiTypes.INT, OpenApiParameter.PATH),
-        ]
-    ),
-    update=extend_schema(
-        parameters=[
-            OpenApiParameter("document_pk", OpenApiTypes.INT, OpenApiParameter.PATH),
-            OpenApiParameter("part_pk", OpenApiTypes.INT, OpenApiParameter.PATH),
-        ]
-    ),
-    partial_update=extend_schema(
-        parameters=[
-            OpenApiParameter("document_pk", OpenApiTypes.INT, OpenApiParameter.PATH),
-            OpenApiParameter("part_pk", OpenApiTypes.INT, OpenApiParameter.PATH),
-        ]
-    ),
-    destroy=extend_schema(
-        parameters=[
-            OpenApiParameter("document_pk", OpenApiTypes.INT, OpenApiParameter.PATH),
-            OpenApiParameter("part_pk", OpenApiTypes.INT, OpenApiParameter.PATH),
-        ]
-    ),
+@extend_schema(
+    parameters=[
+        OpenApiParameter("document_pk", OpenApiTypes.INT, location=OpenApiParameter.PATH),
+        OpenApiParameter("part_pk", OpenApiTypes.INT, location=OpenApiParameter.PATH),
+    ]
 )
 class LineViewSet(DocumentPermissionMixin, ModelViewSet):
     queryset = (Line.objects.select_related('block')
@@ -1376,19 +1344,11 @@ class LineViewSet(DocumentPermissionMixin, ModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@extend_schema_view(
-    list=extend_schema(
-        parameters=[
-            OpenApiParameter("document_pk", OpenApiTypes.INT, OpenApiParameter.PATH),
-            OpenApiParameter("part_pk", OpenApiTypes.INT, OpenApiParameter.PATH),
-        ]
-    ),
-    retrieve=extend_schema(
-        parameters=[
-            OpenApiParameter("document_pk", OpenApiTypes.INT, OpenApiParameter.PATH),
-            OpenApiParameter("part_pk", OpenApiTypes.INT, OpenApiParameter.PATH),
-        ]
-    ),
+@extend_schema(
+    parameters=[
+        OpenApiParameter("document_pk", OpenApiTypes.INT, location=OpenApiParameter.PATH),
+        OpenApiParameter("part_pk", OpenApiTypes.INT, location=OpenApiParameter.PATH),
+    ]
 )
 class LineTranscriptionViewSet(DocumentPermissionMixin, ModelViewSet):
     queryset = LineTranscription.objects.all()
