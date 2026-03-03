@@ -16,8 +16,15 @@ Including another URLconf
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
+from django.http import HttpResponseRedirect
 from django.urls import include, path
 from django.views.generic import TemplateView
+
+LATEST_API_VERSION = "v1"
+
+def api_root_redirect(request):
+    return HttpResponseRedirect(f"/api/{LATEST_API_VERSION}/")
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -25,7 +32,8 @@ urlpatterns = [
     path('', include('imports.urls')),
     path('', include('users.urls')),
     path('', include('reporting.urls')),
-    path('api/', include('api.urls', namespace='api')),
+    path("api/", api_root_redirect),
+    path("api/v1/", include("apps.api.urls")),
     path('captcha/', include('captcha.urls')),
     path('', include('django_prometheus.urls')),
     path('i18n/', include('django.conf.urls.i18n')),

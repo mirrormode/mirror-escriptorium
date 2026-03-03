@@ -15,6 +15,7 @@ import os
 import sys
 
 from django.utils.translation import gettext_lazy as _
+
 from kombu import Queue
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
@@ -70,6 +71,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'django_filters',
     'captcha',
+    'drf_spectacular',
 
     'bootstrap',
     'versioning',
@@ -435,6 +437,67 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'core.pagination.CustomPagination',
     'PAGE_SIZE': 10,
+    'DEFAULT_SCHEMA_CLASS': 'api.schema.NestedAutoSchema',
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.AnonRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '60/min',
+        'user': '600/min',
+    },
+    'DEFAULT_VERSIONING_CLASS': 'rest_framework.versioning.URLPathVersioning',
+    'DEFAULT_VERSION': 'v1',
+    'ALLOWED_VERSIONS': ['v1'],
+    'VERSION_PARAM': 'version',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'eScriptorium API',
+    'DESCRIPTION':  """eScriptorium REST API
+    
+## API Versioning
+The API is versioned using URL path versioning. The current version is v1, and the base URL for the API is /api/v1/. Future versions will be accessible under /api/v2/, etc.
+
+
+### Authentication
+
+- Django Session Login: [/api/v1/api-auth/login/](../api-auth/login/)
+- Token Auth: `POST /api/v1/token-auth/`
+
+After login, use the **Authorize** button.
+
+Token endpoint:
+POST /api/v1/token-auth/
+
+### Licenses
+[MIT License](https://choosealicense.com/licenses/mit/)
+""",
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SECURITY': [
+        {'cookieAuth': []},
+        {'tokenAuth': []},
+    ],
+    'ENUM_ADD_EXPLICIT_BLANK_NULL_CHOICE': False,
+    'SERVE_PERMISSIONS': ['rest_framework.permissions.IsAuthenticated'],
+    'SCHEMA_COERCE_PATH_PK_SUFFIX': True,
+    'POSTPROCESSING_HOOKS': [
+        'api.schema_hooks.fix_nested_pk_types',
+    ],
+    'SECURITY_SCHEMES': {
+        'tokenAuth': {
+            'type': 'http',
+            'scheme': 'bearer',
+            'bearerFormat': 'Token',
+        },
+        'cookieAuth': {
+            'type': 'apiKey',
+            'in': 'cookie',
+            'name': 'sessionid',
+        },
+    },
 }
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
