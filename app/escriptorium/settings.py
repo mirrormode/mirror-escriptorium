@@ -82,6 +82,7 @@ INSTALLED_APPS = [
     'reporting',
     'django_prometheus',
     'solo',
+    'data_exports',
 ]
 
 MIDDLEWARE = [

@@ -2,9 +2,14 @@ openapi: 3.0.3
 info:
   title: eScriptorium API
   version: 1.0.0
-  description: REST API for document transcription, OCR and alignment
+  description: "eScriptorium REST API\n    \n## API Versioning\nThe API is versioned
+    using URL path versioning. The current version is v1, and the base URL for the
+    API is /api/v1/. Future versions will be accessible under /api/v2/, etc.\n\n\n###
+    Authentication\n\n- Django Session Login: [/api/v1/api-auth/login/](../api-auth/login/)\n-
+    Token Auth: `POST /api/v1/token-auth/`\n\nAfter login, use the **Authorize** button.\n\nToken
+    endpoint:\nPOST /api/v1/token-auth/\n\n### Licenses\n[MIT License](https://choosealicense.com/licenses/mit/)\n"
 paths:
-  /api/documents/:
+  /api/v1/documents/:
     get:
       operationId: documents_retrieve
       tags:
@@ -12,7 +17,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
@@ -23,11 +29,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           description: No response body
-  /api/documents/{document_pk}/import/:
+  /api/v1/documents/{document_pk}/import/:
     post:
       operationId: documents_import_create
       parameters:
@@ -53,7 +60,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -61,7 +69,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Import'
           description: ''
-  /api/documents/{document_pk}/metadata/:
+  /api/v1/documents/{document_pk}/metadata/:
     get:
       operationId: documents_metadata_list
       parameters:
@@ -81,7 +89,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -114,7 +123,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -122,7 +132,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DocumentMetadata'
           description: ''
-  /api/documents/{document_pk}/metadata/{id}/:
+  /api/v1/documents/{document_pk}/metadata/{id}/:
     get:
       operationId: documents_metadata_retrieve
       parameters:
@@ -142,7 +152,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -181,7 +192,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -219,7 +231,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -246,11 +259,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/documents/{document_pk}/parts/:
+  /api/v1/documents/{document_pk}/parts/:
     get:
       operationId: documents_parts_list
       parameters:
@@ -282,7 +296,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -314,7 +329,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -322,7 +338,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Part'
           description: ''
-  /api/documents/{document_pk}/parts/{part_pk}/annotations/image/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/annotations/image/:
     get:
       operationId: documents_parts_annotations_image_list
       parameters:
@@ -349,7 +365,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -389,7 +406,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -397,7 +415,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ImageAnnotation'
           description: ''
-  /api/documents/{document_pk}/parts/{part_pk}/annotations/image/{id}/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/annotations/image/{id}/:
     get:
       operationId: documents_parts_annotations_image_retrieve
       parameters:
@@ -424,7 +442,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -470,7 +489,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -515,7 +535,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -549,11 +570,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/documents/{document_pk}/parts/{part_pk}/annotations/text/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/annotations/text/:
     get:
       operationId: documents_parts_annotations_text_list
       parameters:
@@ -580,7 +602,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -620,7 +643,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -628,7 +652,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/TextAnnotation'
           description: ''
-  /api/documents/{document_pk}/parts/{part_pk}/annotations/text/{id}/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/annotations/text/{id}/:
     get:
       operationId: documents_parts_annotations_text_retrieve
       parameters:
@@ -655,7 +679,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -701,7 +726,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -746,7 +772,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -780,11 +807,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/documents/{document_pk}/parts/{part_pk}/blocks/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/blocks/:
     get:
       operationId: documents_parts_blocks_list
       parameters:
@@ -817,7 +845,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -857,7 +886,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -865,7 +895,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Block'
           description: ''
-  /api/documents/{document_pk}/parts/{part_pk}/blocks/{id}/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/blocks/{id}/:
     get:
       operationId: documents_parts_blocks_retrieve
       parameters:
@@ -892,7 +922,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -938,7 +969,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -983,7 +1015,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1017,11 +1050,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/documents/{document_pk}/parts/{part_pk}/lines/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/lines/:
     get:
       operationId: documents_parts_lines_list
       parameters:
@@ -1029,7 +1063,6 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - name: page
         required: false
@@ -1047,14 +1080,14 @@ paths:
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1069,13 +1102,11 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
@@ -1094,7 +1125,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -1102,7 +1134,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Line'
           description: ''
-  /api/documents/{document_pk}/parts/{part_pk}/lines/{id}/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/lines/{id}/:
     get:
       operationId: documents_parts_lines_retrieve
       parameters:
@@ -1110,7 +1142,6 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: id
@@ -1122,14 +1153,14 @@ paths:
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1144,7 +1175,6 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: id
@@ -1156,7 +1186,6 @@ paths:
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
@@ -1175,7 +1204,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1190,7 +1220,6 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: id
@@ -1202,7 +1231,6 @@ paths:
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
@@ -1220,7 +1248,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1235,7 +1264,6 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: id
@@ -1247,18 +1275,18 @@ paths:
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/documents/{document_pk}/parts/{part_pk}/lines/bulk_create/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/lines/bulk_create/:
     post:
       operationId: documents_parts_lines_bulk_create_create
       parameters:
@@ -1266,13 +1294,11 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
@@ -1291,7 +1317,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1299,7 +1326,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Line'
           description: ''
-  /api/documents/{document_pk}/parts/{part_pk}/lines/bulk_delete/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/lines/bulk_delete/:
     post:
       operationId: documents_parts_lines_bulk_delete_create
       parameters:
@@ -1307,13 +1334,11 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
@@ -1332,7 +1357,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1340,7 +1366,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Line'
           description: ''
-  /api/documents/{document_pk}/parts/{part_pk}/lines/bulk_update/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/lines/bulk_update/:
     put:
       operationId: documents_parts_lines_bulk_update_update
       parameters:
@@ -1348,13 +1374,11 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
@@ -1373,7 +1397,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1381,7 +1406,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Line'
           description: ''
-  /api/documents/{document_pk}/parts/{part_pk}/lines/merge/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/lines/merge/:
     post:
       operationId: documents_parts_lines_merge_create
       parameters:
@@ -1389,13 +1414,11 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
@@ -1414,7 +1437,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1422,7 +1446,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Line'
           description: ''
-  /api/documents/{document_pk}/parts/{part_pk}/lines/move/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/lines/move/:
     post:
       operationId: documents_parts_lines_move_create
       parameters:
@@ -1430,13 +1454,11 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
@@ -1455,7 +1477,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1463,7 +1486,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Line'
           description: ''
-  /api/documents/{document_pk}/parts/{part_pk}/metadata/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/metadata/:
     get:
       operationId: documents_parts_metadata_list
       parameters:
@@ -1496,7 +1519,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1536,7 +1560,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -1544,7 +1569,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DocumentPartMetadata'
           description: ''
-  /api/documents/{document_pk}/parts/{part_pk}/metadata/{id}/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/metadata/{id}/:
     get:
       operationId: documents_parts_metadata_retrieve
       parameters:
@@ -1571,7 +1596,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1617,7 +1643,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1662,7 +1689,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1696,11 +1724,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/documents/{document_pk}/parts/{part_pk}/transcriptions/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/transcriptions/:
     get:
       operationId: document_part_transcription_list
       parameters:
@@ -1708,7 +1737,6 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - name: page
         required: false
@@ -1720,14 +1748,14 @@ paths:
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1742,13 +1770,11 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
@@ -1767,7 +1793,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -1775,7 +1802,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LineTranscription'
           description: ''
-  /api/documents/{document_pk}/parts/{part_pk}/transcriptions/{id}/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/transcriptions/{id}/:
     get:
       operationId: document_part_transcription_retrieve
       parameters:
@@ -1783,7 +1810,6 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: id
@@ -1795,14 +1821,14 @@ paths:
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1817,7 +1843,6 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: id
@@ -1829,7 +1854,6 @@ paths:
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
@@ -1848,7 +1872,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1863,7 +1888,6 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: id
@@ -1875,7 +1899,6 @@ paths:
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
@@ -1893,7 +1916,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1908,7 +1932,6 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: id
@@ -1920,18 +1943,18 @@ paths:
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/documents/{document_pk}/parts/{part_pk}/transcriptions/bulk_create/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/transcriptions/bulk_create/:
     post:
       operationId: documents_parts_transcriptions_bulk_create_create
       parameters:
@@ -1939,13 +1962,11 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
@@ -1964,7 +1985,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -1972,7 +1994,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LineTranscription'
           description: ''
-  /api/documents/{document_pk}/parts/{part_pk}/transcriptions/bulk_delete/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/transcriptions/bulk_delete/:
     post:
       operationId: documents_parts_transcriptions_bulk_delete_create
       parameters:
@@ -1980,13 +2002,11 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
@@ -2005,7 +2025,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2013,7 +2034,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LineTranscription'
           description: ''
-  /api/documents/{document_pk}/parts/{part_pk}/transcriptions/bulk_update/:
+  /api/v1/documents/{document_pk}/parts/{part_pk}/transcriptions/bulk_update/:
     put:
       operationId: documents_parts_transcriptions_bulk_update_update
       parameters:
@@ -2021,13 +2042,11 @@ paths:
         name: document_pk
         schema:
           type: integer
-        description: ID of the document
         required: true
       - in: path
         name: part_pk
         schema:
           type: integer
-        description: ID of the document part
         required: true
       tags:
       - documents
@@ -2046,7 +2065,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2054,7 +2074,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LineTranscription'
           description: ''
-  /api/documents/{document_pk}/parts/{id}/:
+  /api/v1/documents/{document_pk}/parts/{id}/:
     get:
       operationId: documents_parts_retrieve
       parameters:
@@ -2074,7 +2094,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2112,7 +2133,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2150,7 +2172,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2177,11 +2200,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/documents/{document_pk}/parts/{id}/cancel/:
+  /api/v1/documents/{document_pk}/parts/{id}/cancel/:
     post:
       operationId: documents_parts_cancel_create
       parameters:
@@ -2212,7 +2236,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2220,7 +2245,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Part'
           description: ''
-  /api/documents/{document_pk}/parts/{id}/crop/:
+  /api/v1/documents/{document_pk}/parts/{id}/crop/:
     post:
       operationId: documents_parts_crop_create
       parameters:
@@ -2251,7 +2276,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2259,7 +2285,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Part'
           description: ''
-  /api/documents/{document_pk}/parts/{id}/move/:
+  /api/v1/documents/{document_pk}/parts/{id}/move/:
     post:
       operationId: documents_parts_move_create
       parameters:
@@ -2290,7 +2316,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2298,7 +2325,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Part'
           description: ''
-  /api/documents/{document_pk}/parts/{id}/recalculate_ordering/:
+  /api/v1/documents/{document_pk}/parts/{id}/recalculate_ordering/:
     post:
       operationId: documents_parts_recalculate_ordering_create
       parameters:
@@ -2329,7 +2356,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2337,7 +2365,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Part'
           description: ''
-  /api/documents/{document_pk}/parts/{id}/reset_masks/:
+  /api/v1/documents/{document_pk}/parts/{id}/reset_masks/:
     post:
       operationId: documents_parts_reset_masks_create
       parameters:
@@ -2368,7 +2396,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2376,7 +2405,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Part'
           description: ''
-  /api/documents/{document_pk}/parts/{id}/rotate/:
+  /api/v1/documents/{document_pk}/parts/{id}/rotate/:
     post:
       operationId: documents_parts_rotate_create
       parameters:
@@ -2407,7 +2436,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2415,7 +2445,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Part'
           description: ''
-  /api/documents/{document_pk}/parts/byorder/:
+  /api/v1/documents/{document_pk}/parts/byorder/:
     get:
       operationId: documents_parts_byorder_retrieve
       parameters:
@@ -2429,7 +2459,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2437,7 +2468,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Part'
           description: ''
-  /api/documents/{document_pk}/task_groups/:
+  /api/v1/documents/{document_pk}/task_groups/:
     get:
       operationId: documents_task_groups_list
       parameters:
@@ -2445,6 +2476,7 @@ paths:
         name: document_pk
         schema:
           type: integer
+        description: ID of the document
         required: true
       - name: page
         required: false
@@ -2458,12 +2490,19 @@ paths:
         description: Number of results to return per page.
         schema:
           type: integer
+      - in: path
+        name: part_pk
+        schema:
+          type: integer
+        description: ID of the document part
+        required: true
       tags:
       - documents
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2478,13 +2517,21 @@ paths:
         name: document_pk
         schema:
           type: integer
+        description: ID of the document
+        required: true
+      - in: path
+        name: part_pk
+        schema:
+          type: integer
+        description: ID of the document part
         required: true
       tags:
       - documents
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -2492,7 +2539,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/TaskGroup'
           description: ''
-  /api/documents/{document_pk}/task_groups/{id}/:
+  /api/v1/documents/{document_pk}/task_groups/{id}/:
     get:
       operationId: documents_task_groups_retrieve
       parameters:
@@ -2500,6 +2547,7 @@ paths:
         name: document_pk
         schema:
           type: integer
+        description: ID of the document
         required: true
       - in: path
         name: id
@@ -2507,12 +2555,19 @@ paths:
           type: integer
         description: A unique integer value identifying this task group.
         required: true
+      - in: path
+        name: part_pk
+        schema:
+          type: integer
+        description: ID of the document part
+        required: true
       tags:
       - documents
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2527,6 +2582,7 @@ paths:
         name: document_pk
         schema:
           type: integer
+        description: ID of the document
         required: true
       - in: path
         name: id
@@ -2534,12 +2590,19 @@ paths:
           type: integer
         description: A unique integer value identifying this task group.
         required: true
+      - in: path
+        name: part_pk
+        schema:
+          type: integer
+        description: ID of the document part
+        required: true
       tags:
       - documents
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2554,6 +2617,7 @@ paths:
         name: document_pk
         schema:
           type: integer
+        description: ID of the document
         required: true
       - in: path
         name: id
@@ -2561,12 +2625,19 @@ paths:
           type: integer
         description: A unique integer value identifying this task group.
         required: true
+      - in: path
+        name: part_pk
+        schema:
+          type: integer
+        description: ID of the document part
+        required: true
       tags:
       - documents
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2581,6 +2652,7 @@ paths:
         name: document_pk
         schema:
           type: integer
+        description: ID of the document
         required: true
       - in: path
         name: id
@@ -2588,16 +2660,23 @@ paths:
           type: integer
         description: A unique integer value identifying this task group.
         required: true
+      - in: path
+        name: part_pk
+        schema:
+          type: integer
+        description: ID of the document part
+        required: true
       tags:
       - documents
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/documents/{document_pk}/taxonomies/annotations/:
+  /api/v1/documents/{document_pk}/taxonomies/annotations/:
     get:
       operationId: documents_taxonomies_annotations_list
       parameters:
@@ -2630,7 +2709,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2670,7 +2750,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -2678,7 +2759,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/AnnotationTaxonomy'
           description: ''
-  /api/documents/{document_pk}/taxonomies/annotations/{id}/:
+  /api/v1/documents/{document_pk}/taxonomies/annotations/{id}/:
     get:
       operationId: documents_taxonomies_annotations_retrieve
       parameters:
@@ -2705,7 +2786,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2751,7 +2833,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2796,7 +2879,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2830,11 +2914,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/documents/{document_pk}/taxonomies/components/:
+  /api/v1/documents/{document_pk}/taxonomies/components/:
     get:
       operationId: documents_taxonomies_components_list
       parameters:
@@ -2860,7 +2945,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2892,7 +2978,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -2900,7 +2987,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/AnnotationComponent'
           description: ''
-  /api/documents/{document_pk}/taxonomies/components/{id}/:
+  /api/v1/documents/{document_pk}/taxonomies/components/{id}/:
     get:
       operationId: documents_taxonomies_components_retrieve
       parameters:
@@ -2920,7 +3007,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2958,7 +3046,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -2996,7 +3085,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -3023,11 +3113,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/documents/{document_pk}/transcriptions/:
+  /api/v1/documents/{document_pk}/transcriptions/:
     get:
       operationId: documents_transcriptions_list
       parameters:
@@ -3041,7 +3132,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -3076,7 +3168,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -3084,7 +3177,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Transcription'
           description: ''
-  /api/documents/{document_pk}/transcriptions/{id}/:
+  /api/v1/documents/{document_pk}/transcriptions/{id}/:
     get:
       operationId: documents_transcriptions_retrieve
       parameters:
@@ -3104,7 +3197,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -3143,7 +3237,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -3181,7 +3276,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -3208,11 +3304,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/documents/{document_pk}/transcriptions/{id}/stats/:
+  /api/v1/documents/{document_pk}/transcriptions/{id}/stats/:
     get:
       operationId: documents_transcriptions_stats_retrieve
       parameters:
@@ -3232,7 +3329,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -3240,7 +3338,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Transcription'
           description: ''
-  /api/documents/{id}/:
+  /api/v1/documents/{id}/:
     get:
       operationId: documents_retrieve_2
       parameters:
@@ -3255,7 +3353,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
@@ -3273,7 +3372,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
@@ -3291,7 +3391,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
@@ -3309,11 +3410,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/documents/{id}/align/:
+  /api/v1/documents/{id}/align/:
     post:
       operationId: documents_align_create
       description: Align transcription with witness text.
@@ -3342,11 +3444,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
-  /api/documents/{id}/bulk_move_parts/:
+  /api/v1/documents/{id}/bulk_move_parts/:
     post:
       operationId: documents_bulk_move_parts_create
       parameters:
@@ -3361,11 +3464,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
-  /api/documents/{id}/cancel_import/:
+  /api/v1/documents/{id}/cancel_import/:
     post:
       operationId: documents_cancel_import_create
       parameters:
@@ -3380,11 +3484,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
-  /api/documents/{id}/cancel_tasks/:
+  /api/v1/documents/{id}/cancel_tasks/:
     post:
       operationId: documents_cancel_tasks_create
       description: Cancel all running or queued tasks for this document.
@@ -3401,11 +3506,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
-  /api/documents/{id}/cancel_training/:
+  /api/v1/documents/{id}/cancel_training/:
     post:
       operationId: documents_cancel_training_create
       parameters:
@@ -3420,11 +3526,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
-  /api/documents/{id}/export/:
+  /api/v1/documents/{id}/export/:
     post:
       operationId: documents_export_create
       parameters:
@@ -3439,13 +3546,15 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
-  /api/documents/{id}/forced_align/:
+  /api/v1/documents/{id}/forced_align/:
     post:
       operationId: documents_forced_align_create
+      description: Force alignment with explicit model and transcription.
       parameters:
       - in: path
         name: id
@@ -3455,14 +3564,29 @@ paths:
         required: true
       tags:
       - documents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
-  /api/documents/{id}/imports/:
+  /api/v1/documents/{id}/imports/:
     post:
       operationId: documents_imports_create
       parameters:
@@ -3477,11 +3601,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
-  /api/documents/{id}/modify_ontology/:
+  /api/v1/documents/{id}/modify_ontology/:
     patch:
       operationId: documents_modify_ontology_partial_update
       parameters:
@@ -3496,11 +3621,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
-  /api/documents/{id}/segment/:
+  /api/v1/documents/{id}/segment/:
     post:
       operationId: documents_segment_create
       description: Run line and/or region segmentation on selected parts.
@@ -3528,11 +3654,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
-  /api/documents/{id}/segtrain/:
+  /api/v1/documents/{id}/segtrain/:
     post:
       operationId: documents_segtrain_create
       description: Train a segmentation model using selected parts.
@@ -3561,11 +3688,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
-  /api/documents/{id}/share/:
+  /api/v1/documents/{id}/share/:
     post:
       operationId: documents_share_create
       parameters:
@@ -3580,11 +3708,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
-  /api/documents/{id}/stats/:
+  /api/v1/documents/{id}/stats/:
     get:
       operationId: documents_stats_retrieve
       parameters:
@@ -3599,11 +3728,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
-  /api/documents/{id}/train/:
+  /api/v1/documents/{id}/train/:
     post:
       operationId: documents_train_create
       description: Train an OCR recognition model.
@@ -3632,11 +3762,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
-  /api/documents/{id}/transcribe/:
+  /api/v1/documents/{id}/transcribe/:
     post:
       operationId: documents_transcribe_create
       description: Apply OCR recognition to selected parts.
@@ -3665,11 +3796,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
-  /api/documents/tasks/:
+  /api/v1/documents/tasks/:
     get:
       operationId: documents_tasks_retrieve
       description: Returns documents that have queued or running tasks.
@@ -3679,11 +3811,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           description: No response body
-  /api/groups/:
+  /api/v1/groups/:
     get:
       operationId: groups_list
       parameters:
@@ -3704,7 +3837,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -3731,7 +3865,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -3739,7 +3874,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailedGroup'
           description: ''
-  /api/groups/{id}/:
+  /api/v1/groups/{id}/:
     get:
       operationId: groups_retrieve
       parameters:
@@ -3754,7 +3889,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -3788,7 +3924,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -3821,7 +3958,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -3843,11 +3981,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/models/:
+  /api/v1/models/:
     get:
       operationId: models_list
       parameters:
@@ -3886,7 +4025,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -3913,7 +4053,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -3921,7 +4062,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OcrModel'
           description: ''
-  /api/models/{id}/:
+  /api/v1/models/{id}/:
     get:
       operationId: models_retrieve
       parameters:
@@ -3936,7 +4077,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -3970,7 +4112,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4003,7 +4146,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4025,11 +4169,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/models/{id}/cancel_training/:
+  /api/v1/models/{id}/cancel_training/:
     post:
       operationId: models_cancel_training_create
       parameters:
@@ -4056,7 +4201,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4064,7 +4210,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OcrModel'
           description: ''
-  /api/projects/:
+  /api/v1/projects/:
     get:
       operationId: projects_list
       parameters:
@@ -4095,7 +4241,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4122,7 +4269,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -4130,7 +4278,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Project'
           description: ''
-  /api/projects/{id}/:
+  /api/v1/projects/{id}/:
     get:
       operationId: projects_retrieve
       parameters:
@@ -4145,7 +4293,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4179,7 +4328,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4212,7 +4362,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4234,11 +4385,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/projects/{id}/share/:
+  /api/v1/projects/{id}/share/:
     post:
       operationId: projects_share_create
       parameters:
@@ -4265,7 +4417,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4273,7 +4426,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Project'
           description: ''
-  /api/projects/{project_pk}/tags/:
+  /api/v1/projects/{project_pk}/tags/:
     get:
       operationId: projects_tags_list
       parameters:
@@ -4293,7 +4446,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4326,7 +4480,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -4334,7 +4489,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DocumentTag'
           description: ''
-  /api/projects/{project_pk}/tags/{id}/:
+  /api/v1/projects/{project_pk}/tags/{id}/:
     get:
       operationId: projects_tags_retrieve
       parameters:
@@ -4354,7 +4509,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4393,7 +4549,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4431,7 +4588,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4458,11 +4616,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/scripts/:
+  /api/v1/scripts/:
     get:
       operationId: scripts_list
       parameters:
@@ -4477,7 +4636,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4485,7 +4645,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/PaginatedScriptList'
           description: ''
-  /api/scripts/{id}/:
+  /api/v1/scripts/{id}/:
     get:
       operationId: scripts_retrieve
       parameters:
@@ -4500,7 +4660,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4508,7 +4669,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Script'
           description: ''
-  /api/tags/project/:
+  /api/v1/tags/project/:
     get:
       operationId: tags_project_list
       parameters:
@@ -4523,7 +4684,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4550,7 +4712,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -4558,7 +4721,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProjectTag'
           description: ''
-  /api/tags/project/{id}/:
+  /api/v1/tags/project/{id}/:
     get:
       operationId: tags_project_retrieve
       parameters:
@@ -4573,7 +4736,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4607,7 +4771,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4640,7 +4805,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4662,11 +4828,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/tasks/:
+  /api/v1/tasks/:
     get:
       operationId: tasks_list
       parameters:
@@ -4701,7 +4868,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4728,7 +4896,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -4736,7 +4905,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/TaskReport'
           description: ''
-  /api/tasks/{id}/:
+  /api/v1/tasks/{id}/:
     get:
       operationId: tasks_retrieve
       parameters:
@@ -4751,7 +4920,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4785,7 +4955,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4818,7 +4989,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4840,11 +5012,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/textual-witnesses/:
+  /api/v1/textual-witnesses/:
     get:
       operationId: textual_witnesses_list
       parameters:
@@ -4865,7 +5038,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4892,7 +5066,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -4900,7 +5075,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/TextualWitness'
           description: ''
-  /api/textual-witnesses/{id}/:
+  /api/v1/textual-witnesses/{id}/:
     get:
       operationId: textual_witnesses_retrieve
       parameters:
@@ -4915,7 +5090,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4949,7 +5125,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -4982,7 +5159,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5004,11 +5182,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/token-auth/:
+  /api/v1/token-auth/:
     post:
       operationId: token_auth_create
       tags:
@@ -5028,7 +5207,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5036,7 +5216,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthToken'
           description: ''
-  /api/types/annotations/:
+  /api/v1/types/annotations/:
     get:
       operationId: types_annotations_list
       parameters:
@@ -5057,7 +5237,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5084,7 +5265,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -5092,7 +5274,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/AnnotationType'
           description: ''
-  /api/types/annotations/{id}/:
+  /api/v1/types/annotations/{id}/:
     get:
       operationId: types_annotations_retrieve
       parameters:
@@ -5107,7 +5289,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5141,7 +5324,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5174,7 +5358,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5196,11 +5381,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/types/block/:
+  /api/v1/types/block/:
     get:
       operationId: types_block_list
       parameters:
@@ -5221,7 +5407,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5248,7 +5435,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -5256,7 +5444,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/BlockType'
           description: ''
-  /api/types/block/{id}/:
+  /api/v1/types/block/{id}/:
     get:
       operationId: types_block_retrieve
       parameters:
@@ -5271,7 +5459,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5305,7 +5494,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5338,7 +5528,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5360,11 +5551,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/types/line/:
+  /api/v1/types/line/:
     get:
       operationId: types_line_list
       parameters:
@@ -5385,7 +5577,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5412,7 +5605,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -5420,7 +5614,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LineType'
           description: ''
-  /api/types/line/{id}/:
+  /api/v1/types/line/{id}/:
     get:
       operationId: types_line_retrieve
       parameters:
@@ -5435,7 +5629,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5469,7 +5664,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5502,7 +5698,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5524,11 +5721,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/types/part/:
+  /api/v1/types/part/:
     get:
       operationId: types_part_list
       parameters:
@@ -5549,7 +5747,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5576,7 +5775,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -5584,7 +5784,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DocumentPartType'
           description: ''
-  /api/types/part/{id}/:
+  /api/v1/types/part/{id}/:
     get:
       operationId: types_part_retrieve
       parameters:
@@ -5599,7 +5799,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5633,7 +5834,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5666,7 +5868,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5688,11 +5891,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/users/:
+  /api/v1/users/:
     get:
       operationId: users_list
       parameters:
@@ -5713,7 +5917,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5740,7 +5945,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '201':
           content:
@@ -5748,7 +5954,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
           description: ''
-  /api/users/{id}/:
+  /api/v1/users/{id}/:
     get:
       operationId: users_retrieve
       parameters:
@@ -5763,7 +5969,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5797,7 +6004,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5830,7 +6038,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:
@@ -5852,11 +6061,12 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '204':
           description: No response body
-  /api/users/current/:
+  /api/v1/users/current/:
     get:
       operationId: users_current_retrieve
       description: Get the currently logged in user
@@ -5865,7 +6075,8 @@ paths:
       security:
       - tokenAuth: []
       - cookieAuth: []
-      - TokenAuth: []
+      - cookieAuth: []
+      - tokenAuth: []
       responses:
         '200':
           content:

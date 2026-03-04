@@ -38,6 +38,7 @@ from drf_spectacular.views import (
     SpectacularRedocView,
 )
 
+from apps.data_exports.views import ExportJobViewSet
 
 router = routers.DefaultRouter()
 router.register(r'scripts', ScriptViewSet)
@@ -53,6 +54,8 @@ router.register(r'types/block', BlockTypeViewSet)
 router.register(r'types/line', LineTypeViewSet)
 router.register(r'types/annotations', AnnotationTypeViewSet)
 router.register(r'types/part', DocumentPartTypeViewSet)
+
+router.register(r'exports', ExportJobViewSet)
 
 projects_router = routers.NestedSimpleRouter(router, r'projects', lookup='project')
 projects_router.register(r'tags', DocumentTagViewSet, basename='document-tag')
