@@ -14,4 +14,6 @@ class ExportJobSerializer(serializers.ModelSerializer):
             "file",
             "created_at",
             "finished_at",
+            'error',
+            'user',
         )

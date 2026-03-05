@@ -20,6 +20,8 @@ class ExportJob(models.Model):
     TYPE_CHOICES = [
         ("json", "Raw JSON"),
         ("table", "Table"),
+        ("zip", "ZIP with JSON and images"),
+        ("excel", "Excel"),
     ]
 
     user = models.ForeignKey(
@@ -63,7 +65,10 @@ class ExportJob(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True, blank=True)
 
+    error = models.TextField(null=True, blank=True)
+
     def __str__(self):
         if self.scope == "document":
             return f"Export Document {self.document_id}"
         return f"Export Project {self.project_id}"
+
