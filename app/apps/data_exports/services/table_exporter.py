@@ -3,7 +3,7 @@ import tempfile
 
 from core.models import Document
 
-from .tasks import normalize_value
+from apps.data_exports.helpers import normalize_value
 
 
 def serialize_model(obj):

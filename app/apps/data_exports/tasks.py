@@ -8,23 +8,11 @@ from django.core.files import File
 from django.utils import timezone
 from openpyxl import Workbook
 
+from .helpers import normalize_value
 from .models import ExportJob
 from .services.raw_json_exporter import RawJSONExporter
 from .services.table_exporter import TableExporter
 
-
-def normalize_value(value):
-
-    if value is None:
-        return None
-
-    if isinstance(value, (list, dict)):
-        return json.dumps(value)
-
-    if isinstance(value, datetime):
-        return value.isoformat()
-
-    return value
 
 def save_json(data):
 
