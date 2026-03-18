@@ -228,6 +228,12 @@ class ExportForm(RegionTypesFormMixin, BootstrapFormMixin, forms.Form):
         label=_("Include character bounding boxes."),
         help_text=_("This data is only present for transcriptions coming from automatic recognition and is invalidated by manual edition."))
 
+    include_metadata = forms.BooleanField(required=False, initial=False, label=_("Include metadata"), help_text=_("Includes document metadata and part metadata."))
+    include_models = forms.BooleanField(required=False, initial=False, label=_("Include OCR models"), help_text=_("Includes the OCR models used to produce the transcriptions."))
+    all_transcriptions = forms.BooleanField(required=False, initial=False, label=_("Include all transcriptions"), help_text=_("Includes all transcriptions of the document, not only the one selected."))
+    include_graph = forms.BooleanField(required=False, initial=False, label=_("Include graph"), help_text=_("Includes the graph of the document with all its regions and lines."))
+
+
     def __init__(self, document, user, *args, **kwargs):
         self.document = document
         self.user = user
@@ -256,6 +262,10 @@ class ExportForm(RegionTypesFormMixin, BootstrapFormMixin, forms.Form):
                               document_pk=self.document.pk,
                               include_images=self.cleaned_data['include_images'],
                               include_characters=self.cleaned_data['include_characters'],
+                              include_metadata=self.cleaned_data['include_metadata'],
+                              include_models=self.cleaned_data['include_models'],
+                              include_graph=self.cleaned_data['include_graph'],
+                              all_transcriptions=self.cleaned_data['all_transcriptions'],
                               user_pk=self.user.pk,
                               report_label=_('Export %(document_name)s') % {'document_name': self.document.name})
 

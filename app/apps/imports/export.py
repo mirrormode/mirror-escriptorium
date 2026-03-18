@@ -1,5 +1,6 @@
 import os.path
 import re
+import json
 import time
 import zipfile
 from datetime import datetime
@@ -11,13 +12,14 @@ from django.db.models import Avg, Prefetch
 from django.template import loader
 from django.utils.text import slugify
 
-from core.models import Block
+from core.models import Block, Transcription
 
 TEXT_FORMAT = "text"
 PAGEXML_FORMAT = "pagexml"
 ALTO_FORMAT = "alto"
 OPENITI_MARKDOWN_FORMAT = "openitimarkdown"
 TEI_XML_FORMAT = "teixml"
+JSON_FORMAT = "json"
 
 
 class EsZipFile(zipfile.ZipFile):
@@ -38,6 +40,10 @@ class BaseExporter:
         region_types,
         include_images,
         include_characters,
+        include_metadata,
+        include_models,
+        include_graph,
+        all_transcriptions,
         user,
         document,
         report,
@@ -51,6 +57,10 @@ class BaseExporter:
         self.document = document
         self.report = report
         self.transcription = transcription
+        self.include_metadata = include_metadata
+        self.include_models = include_models
+        self.include_graph = include_graph
+        self.all_transcriptions = all_transcriptions
 
         self.prepare_for_rendering()
 
@@ -199,6 +209,245 @@ class AltoExporter(XMLTemplateExporter):
     template_path = "export/alto.xml"
 
 
+class JsonExporter(BaseExporter):
+    file_format = JSON_FORMAT
+    file_extension = "json"
+
+    def _serialize_document_metadata(self):
+        return [
+            {
+                "key": md.key.name,
+                "value": md.value,
+            }
+            for md in self.document.documentmetadata_set.select_related("key").all()
+        ]
+
+    def _serialize_part_metadata(self, part):
+        return [
+            {
+                "key": md.key.name,
+                "value": md.value,
+            }
+            for md in part.metadata.select_related("key").all()
+        ]
+
+    def _serialize_transcription(self, line):
+        """
+        Return the selected transcription for a line if available.
+        Works with the prefetch_transcription() helper, which stores the result
+        on line.transcription as a list.
+        """
+        lt = None
+
+        prefetched = getattr(line, "transcription", None)
+        if prefetched:
+            lt = prefetched[0]
+        else:
+            lt = line.transcriptions.filter(
+                transcription=self.transcription
+            ).first()
+
+        if not lt:
+            return None
+
+        data = {
+            "pk": lt.pk,
+            "transcription_pk": lt.transcription_id,
+            "content": lt.content,
+            "text": lt.text,
+            "avg_confidence": lt.avg_confidence,
+        }
+
+        if self.include_characters:
+            data["graphs"] = lt.graphs
+
+        return data
+
+    def _serialize_line(self, line):
+        return {
+            "pk": line.pk,
+            "external_id": line.external_id,
+            "order": line.order,
+            "typology": {
+                "pk": line.typology_id,
+                "name": line.typology.name if line.typology else None,
+            },
+            "baseline": line.baseline,
+            "mask": line.mask,
+            "box": line.get_box(),
+            "block_pk": line.block_id,
+            "transcription": self._serialize_transcription(line),
+        }
+
+    def _serialize_block(self, block):
+        lines = []
+        for line in getattr(block, "prefetched_lines", []):
+            lines.append(self._serialize_line(line))
+
+        return {
+            "pk": block.pk,
+            "external_id": block.external_id,
+            "order": block.order,
+            "typology": {
+                "pk": block.typology_id,
+                "name": block.typology.name if block.typology else None,
+            },
+            "box": block.box,
+            "bbox": block.coordinates_box,
+            "width": block.width,
+            "height": block.height,
+            "lines": lines,
+        }
+
+    def _serialize_part(self, part, include_orphans, region_filters):
+        Line = apps.get_model("core", "Line")
+
+        blocks_qs = (
+            part.blocks.filter(region_filters)
+            .annotate(avglo=Avg("lines__order"))
+            .order_by("avglo", "order", "pk")
+            .prefetch_related(
+                Prefetch(
+                    "lines",
+                    queryset=Line.objects.prefetch_transcription(self.transcription)
+                    .select_related("typology", "block")
+                    .order_by("order", "pk"),
+                    to_attr="prefetched_lines",
+                )
+            )
+            .select_related("typology")
+        )
+
+        regions = [self._serialize_block(block) for block in blocks_qs]
+
+        orphan_lines = []
+        if include_orphans:
+            orphan_qs = (
+                part.lines.prefetch_transcription(self.transcription)
+                .filter(block=None)
+                .select_related("typology", "block")
+                .order_by("order", "pk")
+            )
+            orphan_lines = [self._serialize_line(line) for line in orphan_qs]
+
+        image_data = {
+            "filename": part.filename,
+            "original_filename": part.original_filename,
+            "uri": part.image.url if getattr(part, "image", None) else None,
+            "width": getattr(part.image, "width", None) if getattr(part, "image", None) else None,
+            "height": getattr(part.image, "height", None) if getattr(part, "image", None) else None,
+            "size": [
+                getattr(part.image, "width", None),
+                getattr(part.image, "height", None),
+            ] if getattr(part, "image", None) else None,
+        }
+
+        if not self.include_images:
+            image_data = None
+
+        return {
+            "pk": part.pk,
+            "title": part.title,
+            "name": part.name,
+            "filename": part.filename,
+            "order": part.order,
+            "workflow_state": part.workflow_state,
+            "transcription_progress": part.transcription_progress,
+            "typology": {
+                "pk": part.typology_id,
+                "name": part.typology.name if part.typology else None,
+            },
+            "image": image_data,
+            "metadata": self._serialize_part_metadata(part),
+            "regions": regions,
+            "orphan_lines": orphan_lines,
+        }
+
+    def render(self):
+        DocumentPart = apps.get_model("core", "DocumentPart")
+
+        region_types = list(self.region_types) if self.region_types else []
+        include_orphans = "Orphan" in region_types
+        region_filters = Block.get_filters(
+            block_types=list(region_types),
+            filtering_lines=False,
+        )
+
+        parts = (
+            DocumentPart.objects.filter(document=self.document, pk__in=self.part_pks)
+            .select_related("typology")
+            .prefetch_related("metadata__key")
+            .order_by("order", "pk")
+        )
+
+        if self.all_transcriptions:
+            transcriptions = Transcription.objects.filter(document=self.document)
+        else:
+            transcriptions = [self.transcription]
+
+        payload = {
+            "document": {
+                "pk": self.document.pk,
+                "name": self.document.name,
+                "read_direction": self.document.read_direction,
+                "line_offset": self.document.line_offset,
+                "main_script": self.document.main_script.name if self.document.main_script else None,
+                "valid_block_types": [
+                    {"pk": bt.pk, "name": bt.name}
+                    for bt in self.document.valid_block_types.all().order_by("name")
+                ],
+                "valid_line_types": [
+                    {"pk": lt.pk, "name": lt.name}
+                    for lt in self.document.valid_line_types.all().order_by("name")
+                ],
+            },
+            "export": {
+                "file_format": self.file_format,
+                "transcriptions": [
+                    {"pk": t.pk, "name": t.name}
+                    for t in transcriptions
+                ],
+                "part_pks": list(self.part_pks),
+                "region_types": region_types,
+                "include_images": self.include_images,
+                "include_characters": self.include_characters,
+            },
+            "parts": [
+                self._serialize_part(part, include_orphans, region_filters)
+                for part in parts
+            ],
+        }
+
+        if self.include_metadata:
+            payload["document"]["metadata"] = self._serialize_document_metadata()
+
+        if self.include_models:
+
+            models = set()
+
+            for t in transcriptions:
+                if getattr(t, "model", None):
+                    models.add(t.model)
+
+            payload["models"] = [
+                {
+                    "pk": m.pk,
+                    "name": m.name,
+                    "job": m.job,
+                }
+                for m in models
+            ]
+
+        if self.include_graph:
+            payload["graph"] = self._build_reading_graph(parts)
+
+
+
+        with open(self.filepath, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False, indent=2)
+
+
+
 class OpenITIMARkdownExporter(BaseExporter):
     file_format = OPENITI_MARKDOWN_FORMAT
     file_extension = "zip"
@@ -269,6 +518,8 @@ ENABLED_EXPORTERS = {
     TEXT_FORMAT: {"class": TextExporter, "label": "Text"},
     PAGEXML_FORMAT: {"class": PageXMLExporter, "label": "PAGE"},
     ALTO_FORMAT: {"class": AltoExporter, "label": "ALTO"},
+    TEI_XML_FORMAT: {"class": TEIXMLExporter, "label": "TEI XML"},
+    JSON_FORMAT: {"class": JsonExporter, "label": "JSON"},
 }
 
 if settings.EXPORT_OPENITI_MARKDOWN_ENABLED:
