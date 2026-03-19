@@ -422,20 +422,13 @@ class JsonExporter(BaseExporter):
             payload["document"]["metadata"] = self._serialize_document_metadata()
 
         if self.include_models:
-
-            models = set()
-
-            for t in transcriptions:
-                if getattr(t, "model", None):
-                    models.add(t.model)
-
             payload["models"] = [
                 {
                     "pk": m.pk,
                     "name": m.name,
                     "job": m.job,
                 }
-                for m in models
+                for m in self.document.ocr_models.all()
             ]
 
         if self.include_graph:
@@ -446,6 +439,40 @@ class JsonExporter(BaseExporter):
         with open(self.filepath, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, ensure_ascii=False, indent=2)
 
+    def _build_reading_graph(self, parts):
+        graph = []
+
+        for part in parts:
+            blocks = (
+                part.blocks
+                .annotate(avglo=Avg("lines__order"))
+                .order_by("avglo", "order", "pk")
+            )
+
+            prev_block = None
+
+            for block in blocks:
+                node = {
+                    "id": f"block_{block.pk}",
+                    "type": "block",
+                    "box": block.box,
+                    "typology": block.typology.name if block.typology else None,
+                }
+
+                graph.append({"node": node})
+
+                if prev_block:
+                    graph.append({
+                        "edge": {
+                            "from": f"block_{prev_block.pk}",
+                            "to": f"block_{block.pk}",
+                            "type": "reading_order"
+                        }
+                    })
+
+                prev_block = block
+
+        return graph
 
 
 class OpenITIMARkdownExporter(BaseExporter):
