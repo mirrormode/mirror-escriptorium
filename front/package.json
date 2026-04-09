@@ -19,7 +19,7 @@
     "@escriptorium/virtual-keyboard": "^0.2.2-b2506100631",
     "@fortawesome/fontawesome-free": "^5.7.0",
     "@recogito/annotorious": "^2.7.12",
-    "@recogito/recogito-js": "^1.8.4",
+    "@recogito/text-annotator": "^3.4.9",
     "axios": "^0.21.4",
     "bootstrap": "^4.2.1",
     "bootstrap-select": "^1.13.18",

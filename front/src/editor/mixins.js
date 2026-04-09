@@ -183,7 +183,7 @@ export var AnnoPanel = {
         },
 
         disableTaxonomy(taxo) {
-            this.anno.readOnly = true;
+            this.anno.setAnnotatingEnabled(false);
             this.currentTaxonomy = null;
             document.querySelectorAll(".taxo-group .btn-info").forEach((e) => {
                 e.classList.remove("btn-info");
@@ -192,7 +192,7 @@ export var AnnoPanel = {
         },
 
         enableTaxonomy(taxo) {
-            this.anno.readOnly = false;
+            this.anno.setAnnotatingEnabled(true);
             if (taxo) {
                 let btn = this.getTaxoButton(taxo);
                 if (btn) {
@@ -212,24 +212,6 @@ export var AnnoPanel = {
 
         setAnnoTaxonomy(taxo) {
             this.currentTaxonomy = taxo;
-
-            if (taxo.has_comments || taxo.components.length) {
-                this.anno.disableEditor = false;
-            } else {
-                // this.anno.disableEditor = true;
-            }
-            let widgets = [];
-            if (taxo.has_comments) {
-                widgets.push("COMMENT");
-            }
-            taxo.components.forEach((compo) => {
-                widgets.push({
-                    widget: KeyValueWidget,
-                    name: compo.name,
-                    values: compo.allowed_values,
-                });
-            });
-            this.anno.widgets = widgets;
         },
 
         getAPIAnnotationBody(annotation) {

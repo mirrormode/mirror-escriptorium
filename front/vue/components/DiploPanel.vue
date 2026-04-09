@@ -274,7 +274,8 @@
 import { nextTick } from "vue";
 import { mapActions, mapMutations, mapState } from "vuex";
 import { Dropdown as VDropdown } from "floating-vue";
-import { Recogito } from "@recogito/recogito-js";
+import { createTextAnnotator, W3CTextFormat } from "@recogito/text-annotator";
+import "@recogito/text-annotator/text-annotator.css";
 import { debounce, groupBy } from "lodash";
 import { BasePanel , AnnoPanel } from "../../src/editor/mixins.js";
 import ChevronDownIcon from "./Icons/ChevronDownIcon/ChevronDownIcon.vue";
@@ -403,8 +404,7 @@ export default {
                             vm.onDraggingEnd(evt);
                         }).bind(this),
                     });
-                    // reset recogito app container element
-                    this.anno._appContainerEl = this.$refs.contentContainer;
+                    this.initAnnotations();
                     await this.loadAnnotations();
                 });
             }
@@ -425,11 +425,20 @@ export default {
     },
 
     created() {
+        // non-reactive map of annotation id → taxonomy
+        this._taxoMap = {};
         // vue.js quirck, have to dynamically create the event handler
         // call save every 10 seconds after last change
         this.debouncedSave = debounce(function() {
             this.save();
         }.bind(this), 10000);
+    },
+
+    beforeDestroy() {
+        window.removeEventListener("resize", this.recalculatePanelHeight);
+        if (this.anno) {
+            this.anno.destroy();
+        }
     },
 
     mounted() {
@@ -478,6 +487,7 @@ export default {
         ...mapMutations("lines", ["setIsDragging"]),
 
         empty() {
+            this._taxoMap = {};
             this.anno.clearAnnotations();
             while (this.$refs.diplomaticLines && this.$refs.diplomaticLines.hasChildNodes()) {
                 this.$refs.diplomaticLines.removeChild(this.$refs.diplomaticLines.lastChild);
@@ -553,107 +563,104 @@ export default {
             let annos = await this.fetchTextAnnotations();
             annos.forEach(function(annotation) {
                 let data = annotation.as_w3c;
-                data.id = annotation.pk;
-                data.taxonomy = this.annotationTaxonomies.text.find(
+                data.id = String(annotation.pk);
+                const taxo = this.annotationTaxonomies.text.find(
                     (e) => e.pk == annotation.taxonomy
                 );
+                if (taxo) this._taxoMap[data.id] = taxo;
                 if (!this.isRegionsModeEnabled) {
                     this.anno.addAnnotation(data);
                 }
             }.bind(this));
         },
-        textAnnoFormatter (annotation) {
-            const anno = annotation.underlying;
-            if (this.legacyModeEnabled) {
-                const className = "anno-" + (
-                    anno.taxonomy != undefined && anno.taxonomy.pk || this.currentTaxonomy.pk
-                );
-                return className;
-            } else {
-                const color = anno?.taxonomy?.marker_detail || this.currentTaxonomy.marker_detail;
-                /**
-                 *  TODO: all annotations get underlines
-                 *  text-decoration: underline 3px ${color};
-                 *  text-underline-position: under;
-                 */
-                let style = `
-                    background-color: transparent;
-                    border-bottom: none;
-                `;
-                switch (anno?.taxonomy?.marker_type || this.currentTaxonomy.marker_type) {
-                    case "Background Color":
-                        style = `${style} background-color: ${color}33;`;
-                        // TODO: remove below when doubling bug is fixed
-                        style = `${style} border-bottom: 2px solid ${color};`;
-                        break;
-                    case "Text Color":
-                        style = `${style} color: ${color};`
-                        break;
-                    case "Bold":
-                        style = `${style} font-weight: bold;`;
-                        break;
-                    case "Italic":
-                        style = `${style} font-style: italic;`;
-                        break;
-                    default:
-                        break;
-                }
-                return { style };
+        textAnnoStyle(annotation) {
+            // annotation is the internal TextAnnotation; look up taxonomy by id
+            const taxo = this._taxoMap[annotation.id] || this.currentTaxonomy;
+            if (!taxo) return undefined;
+            const color = taxo.marker_detail;
+            switch (taxo.marker_type) {
+                case "Background Color":
+                    return {
+                        fill: color,
+                        fillOpacity: 0.2,
+                        underlineColor: color,
+                        underlineStyle: "solid",
+                        underlineThickness: 2,
+                    };
+                case "Text Color":
+                    return {
+                        fill: "transparent",
+                        fillOpacity: 0,
+                        underlineColor: color,
+                        underlineStyle: "solid",
+                        underlineThickness: 2,
+                    };
+                case "Bold":
+                case "Italic":
+                    // HighlightStyle has no font-weight/style; use a subtle fill
+                    return { fill: color, fillOpacity: 0.15 };
+                default:
+                    return undefined;
             }
         },
         initAnnotations() {
-            this.anno = new Recogito({
-                content: this.$refs.contentContainer,
-                allowEmpty: true,
-                readOnly: true,
-                widgets: [],
-                disableEditor: false,
-                formatter: this.textAnnoFormatter.bind(this),
+            if (this.anno) {
+                this.anno.destroy();
+            }
+
+            this.anno = createTextAnnotator(this.$refs.contentContainer, {
+                adapter: W3CTextFormat(window.location.href, this.$refs.contentContainer),
+                annotatingEnabled: false,
+                style: this.textAnnoStyle.bind(this),
             });
 
             this.isEditorOpen = false;
-            const editorOpenObserver = function(mutationsList) {
-                // let's hope for no race condition with the contenteditable focusin/out...
-                for (let mutation of mutationsList) {
-                    if (mutation.addedNodes.length) {
-                        this.isEditorOpen = true;
-                        this.setBlockShortcuts(true);
-                    } else if (mutation.removedNodes.length) {
-                        this.isEditorOpen = false;
-                        this.setBlockShortcuts(false);
+
+            this.anno.on("selectionChanged", function(annotations) {
+                const hasSelection = annotations.length > 0;
+                this.isEditorOpen = hasSelection;
+                this.setBlockShortcuts(hasSelection);
+                if (annotations.length === 1) {
+                    const taxo = this._taxoMap[annotations[0].id];
+                    if (taxo && this.currentTaxonomy !== taxo) {
+                        this.toggleTaxonomy(taxo);
                     }
                 }
-            }.bind(this);
-            const editorObserver = new MutationObserver(editorOpenObserver);
-            editorObserver.observe(this.anno._appContainerEl, {childList: true});
+            }.bind(this));
 
             this.anno.on("createAnnotation", async function(annotation) {
-                annotation.taxonomy = this.currentTaxonomy;
-                let offsets = annotation.target.selector.find(
-                    (e) => e.type == "TextPositionSelector"
-                );
+                const taxo = this.currentTaxonomy;
+                annotation.taxonomy = taxo;
+                const tempId = annotation.id;
+                if (taxo) this._taxoMap[tempId] = taxo;
+                const selectors = Array.isArray(annotation.target.selector)
+                    ? annotation.target.selector
+                    : [annotation.target.selector];
+                const offsets = selectors.find((s) => s.type === "TextPositionSelector");
                 let body = this.getAPITextAnnotationBody(annotation, offsets);
                 body.transcription = this.selectedTranscription;
                 const newAnno = await this.createTextAnnotation(body);
-                // updates actual object (annotation is just a copy)
-                annotation.id = newAnno.pk;
-                this.anno.addAnnotation(annotation);
+                // update the annotation id to the server-assigned pk
+                const serverPk = String(newAnno.pk);
+                delete this._taxoMap[tempId];
+                if (taxo) this._taxoMap[serverPk] = taxo;
+                this.anno.removeAnnotation(tempId);
+                const updated = { ...annotation, id: serverPk };
+                this.anno.addAnnotation(updated);
             }.bind(this));
 
             this.anno.on("updateAnnotation", function(annotation) {
-                let offsets = annotation.target.selector;
+                const selectors = Array.isArray(annotation.target.selector)
+                    ? annotation.target.selector
+                    : [annotation.target.selector];
+                const offsets = selectors.find((s) => s.type === "TextPositionSelector");
                 let body = this.getAPITextAnnotationBody(annotation, offsets);
                 body.id = annotation.id;
                 this.updateTextAnnotation(body);
             }.bind(this));
 
-            this.anno.on("selectAnnotation", function(annotation) {
-                if (annotation.taxonomy && this.currentTaxonomy != annotation.taxonomy) {
-                    this.toggleTaxonomy(annotation.taxonomy);
-                }
-            }.bind(this));
-
             this.anno.on("deleteAnnotation", function(annotation) {
+                delete this._taxoMap[annotation.id];
                 this.deleteTextAnnotation(annotation.id);
             }.bind(this));
         },
@@ -680,35 +687,17 @@ export default {
         },
 
         recalculateAnnotationSelectors() {
+            // text-annotator tracks positions via live DOM Range objects,
+            // so getAnnotations() already returns up-to-date positions after text edits.
             for (let anno of this.anno.getAnnotations()) {
-                let annoEls = document.querySelectorAll('.r6o-annotation[data-id="'+anno.id+'"]');
-
-                if (annoEls === null) {
-                    this.deleteTextAnnotation(anno.id);
-                }
-
-                let range = document.createRange();
-                range.setStart(annoEls[0], 0);
-                range.setEnd(annoEls[annoEls.length-1], 1);
-                let rangeBefore = document.createRange();
-                rangeBefore.setStart(this.$refs.contentContainer, 0);
-                rangeBefore.setEnd(range.startContainer, range.startOffset);
-                let quote = range.toString();
-                let oldStart = anno.target.selector.start;
-                let oldEnd = anno.target.selector.end;
-                let start = rangeBefore.toString().length;
-                let end = start + quote.length;
-                anno.target.selector = {
-                    type: "TextPositionSelector",
-                    start: start,
-                    end: end
-                };
-
-                let body = this.getAPITextAnnotationBody(anno, anno.target.selector);
+                const selectors = Array.isArray(anno.target.selector)
+                    ? anno.target.selector
+                    : [anno.target.selector];
+                const posSelector = selectors.find((s) => s.type === "TextPositionSelector");
+                if (!posSelector) continue;
+                let body = this.getAPITextAnnotationBody(anno, posSelector);
                 body.id = anno.id;
-                if (oldStart != start || oldEnd != end) {
-                    this.updateTextAnnotation(body);
-                }
+                this.updateTextAnnotation(body);
             }
         },
 
@@ -871,10 +860,11 @@ export default {
             }.bind(this));
 
             if (!this.isRegionsModeEnabled) {
-                // check if some annotations were completely deleted by the erasing the text
+                // check if some annotations were completely deleted by erasing the text
                 for (let annotation of this.allTextAnnotations) {
-                    let annoEl = document.querySelector('.r6o-annotation[data-id="'+annotation.pk+'"]');
-                    if (annoEl === null) this.deleteTextAnnotation(annotation.pk);
+                    if (!this.anno.getAnnotationById(String(annotation.pk))) {
+                        this.deleteTextAnnotation(annotation.pk);
+                    }
                 }
             }
         },
@@ -1179,23 +1169,8 @@ export default {
         },
 
         setTextAnnoTaxonomy(taxo) {
-            var colorFormatter = function() {
-                // todo: find a way to pass the marker_detail..
-                return "colored-text";
-            };
-            var boldFormatter = function() {
-                return "strong";
-            };
-            var italicFormatter = function() {
-                return "italic";
-            };
-            let marker_map = {
-                "Background Color": null,
-                "Text Color": colorFormatter,
-                "Bold" : boldFormatter,
-                "Italic": italicFormatter
-            };
-            this.anno.formatter = marker_map[taxo.marker_type];
+            // setStyle triggers a redraw with the updated currentTaxonomy for un-annotated selections
+            this.anno.setStyle(this.textAnnoStyle.bind(this));
             this.setAnnoTaxonomy(taxo);
         },
 

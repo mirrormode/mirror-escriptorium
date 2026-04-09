@@ -2,7 +2,6 @@ import "../css/escriptorium.css";
 import "../css/rtl.css";
 import "../css/ttb.css";
 import "@recogito/annotorious/dist/annotorious.min.css";
-import "@recogito/recogito-js/dist/recogito.min.css";
 import "./ajax.js";
 import { Alert, bootWebsocket, joinDocumentRoom } from "./messages.js";
 window.Alert = Alert;
