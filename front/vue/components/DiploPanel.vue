@@ -267,6 +267,70 @@
                 </ol>
             </details>
         </div>
+        <div
+            v-if="annoEditorVisible"
+            class="escr-anno-editor-popup"
+            :style="annoEditorStyle"
+        >
+            <div
+                v-if="currentTaxonomy && currentTaxonomy.has_comments"
+                class="escr-anno-editor-field"
+            >
+                <label>Comment</label>
+                <textarea
+                    v-model="annoEditorComment"
+                    rows="2"
+                    class="form-control form-control-sm"
+                />
+            </div>
+            <div
+                v-for="comp in annoEditorComponents"
+                :key="comp.name"
+                class="escr-anno-editor-field"
+            >
+                <label>{{ comp.name }}</label>
+                <select
+                    v-if="comp.allowed_values && comp.allowed_values.length"
+                    v-model="annoEditorAttrs[comp.name]"
+                    class="form-control form-control-sm"
+                >
+                    <option
+                        v-for="v in comp.allowed_values"
+                        :key="v"
+                        :value="v"
+                    >
+                        {{ v }}
+                    </option>
+                </select>
+                <input
+                    v-else
+                    v-model="annoEditorAttrs[comp.name]"
+                    type="text"
+                    class="form-control form-control-sm"
+                />
+            </div>
+            <div class="escr-anno-editor-actions">
+                <button
+                    class="btn btn-sm btn-primary"
+                    @click="submitAnnoEditor"
+                >
+                    OK
+                </button>
+                <button
+                    class="btn btn-sm btn-outline-secondary ml-1"
+                    @click="cancelAnnoEditor"
+                >
+                    Cancel
+                </button>
+                <button
+                    class="btn btn-sm btn-outline-danger ml-1"
+                    title="Delete annotation"
+                    @click="deleteAnnoEditor"
+                >
+                    <TrashIcon />
+                </button>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -285,9 +349,61 @@ import DiploLine from "./DiploLine.vue";
 import EditorToolbar from "./EditorToolbar/EditorToolbar.vue";
 import GroupedLine from "../components/GroupedLine/GroupedLine.vue";
 import RegionsIcon from "./Icons/RegionsIcon/RegionsIcon.vue";
+import TrashIcon from "./Icons/TrashIcon/TrashIcon.vue";
 import ToggleButton from "./ToggleButton/ToggleButton.vue";
 import TranscriptionDropdown from "./EditorTranscriptionDropdown/EditorTranscriptionDropdown.vue";
 import "../components/Common/Annotation.css";
+
+/**
+ * Extract the TextPositionSelector from a W3C annotation.
+ * Handles both array and single-object forms of target and selector.
+ */
+function getTextPositionSelector(annotation) {
+    const target = Array.isArray(annotation.target)
+        ? annotation.target[0]
+        : annotation.target;
+    if (!target || !target.selector) return null;
+    const selectors = Array.isArray(target.selector)
+        ? target.selector
+        : [target.selector];
+    return selectors.find((s) => s && s.type === "TextPositionSelector") || null;
+}
+
+/**
+ * W3CTextFormat requires both TextPositionSelector and TextQuoteSelector.
+ * The server only stores TextPositionSelector, so synthesize the quote
+ * selector from the container's current text content when loading.
+ */
+function withTextQuoteSelector(w3cAnnotation, container) {
+    const target = Array.isArray(w3cAnnotation.target)
+        ? w3cAnnotation.target[0]
+        : w3cAnnotation.target;
+    if (!target || !target.selector) return w3cAnnotation;
+
+    const selectors = Array.isArray(target.selector)
+        ? target.selector
+        : [target.selector];
+
+    if (selectors.some((s) => s && s.type === "TextQuoteSelector")) {
+        return w3cAnnotation;
+    }
+
+    const pos = selectors.find((s) => s && s.type === "TextPositionSelector");
+    if (!pos) return w3cAnnotation;
+
+    const text = container.textContent;
+    const quoteSelector = {
+        type: "TextQuoteSelector",
+        exact: text.slice(pos.start, pos.end),
+        prefix: text.slice(Math.max(0, pos.start - 32), pos.start),
+        suffix: text.slice(pos.end, pos.end + 32),
+    };
+
+    return {
+        ...w3cAnnotation,
+        target: { ...target, selector: [...selectors, quoteSelector] },
+    };
+}
 
 export default {
     components: {
@@ -298,6 +414,7 @@ export default {
         KeyboardIcon,
         LineOrderingIcon,
         RegionsIcon,
+        TrashIcon,
         ToggleButton,
         TranscriptionDropdown,
         VDropdown,
@@ -313,6 +430,12 @@ export default {
             isSortModeEnabled: false,
             selectedLines: [],
             selectionAnchor: null,
+            annoEditorVisible: false,
+            annoEditorStyle: {},
+            annoEditorComment: "",
+            annoEditorAttrs: {},
+            annoEditorComponents: [],
+            annoEditorAnnotationId: null,
         };
     },
     computed: {
@@ -427,6 +550,13 @@ export default {
     created() {
         // non-reactive map of annotation id → taxonomy
         this._taxoMap = {};
+        // maps library UUID → server pk for annotations not yet swapped
+        this._idMap = {};
+        // caches annotation bodies (W3C) by id — avoids calling getAnnotationById which
+        // sets up Solid.js reactive deps that crash when the Range is later invalid
+        this._bodyCache = {};
+        // timer for deferred popup hide — cancelled by createAnnotation before it runs
+        this._hidePopupTimer = null;
         // vue.js quirck, have to dynamically create the event handler
         // call save every 10 seconds after last change
         this.debouncedSave = debounce(function() {
@@ -564,10 +694,12 @@ export default {
             annos.forEach(function(annotation) {
                 let data = annotation.as_w3c;
                 data.id = String(annotation.pk);
+                data = withTextQuoteSelector(data, this.$refs.contentContainer);
                 const taxo = this.annotationTaxonomies.text.find(
                     (e) => e.pk == annotation.taxonomy
                 );
                 if (taxo) this._taxoMap[data.id] = taxo;
+                this._bodyCache[data.id] = Array.isArray(data.body) ? data.body : [];
                 if (!this.isRegionsModeEnabled) {
                     this.anno.addAnnotation(data);
                 }
@@ -620,48 +752,65 @@ export default {
                 const hasSelection = annotations.length > 0;
                 this.isEditorOpen = hasSelection;
                 this.setBlockShortcuts(hasSelection);
+                if (!hasSelection) {
+                    // Defer the hide so that createAnnotation (which fires in the same
+                    // synchronous burst) can cancel it before it runs.
+                    this._hidePopupTimer = setTimeout(() => {
+                        this.annoEditorVisible = false;
+                    }, 0);
+                    return;
+                }
+                clearTimeout(this._hidePopupTimer);
                 if (annotations.length === 1) {
                     const taxo = this._taxoMap[annotations[0].id];
                     if (taxo && this.currentTaxonomy !== taxo) {
                         this.toggleTaxonomy(taxo);
                     }
+                    this.$nextTick(() => this.showAnnoEditor(annotations[0].id));
                 }
             }.bind(this));
 
             this.anno.on("createAnnotation", async function(annotation) {
+                // Cancel any pending popup hide scheduled by selectionChanged([]).
+                clearTimeout(this._hidePopupTimer);
                 const taxo = this.currentTaxonomy;
                 annotation.taxonomy = taxo;
                 const tempId = annotation.id;
+                const annoBody = Array.isArray(annotation.body) ? annotation.body : [];
+                this._bodyCache[tempId] = annoBody;
                 if (taxo) this._taxoMap[tempId] = taxo;
-                const selectors = Array.isArray(annotation.target.selector)
-                    ? annotation.target.selector
-                    : [annotation.target.selector];
-                const offsets = selectors.find((s) => s.type === "TextPositionSelector");
-                let body = this.getAPITextAnnotationBody(annotation, offsets);
+                const offsets = getTextPositionSelector(annotation);
+                const safeAnnotation = { ...annotation, body: annoBody };
+                let body = this.getAPITextAnnotationBody(safeAnnotation, offsets);
                 body.transcription = this.selectedTranscription;
-                const newAnno = await this.createTextAnnotation(body);
-                // update the annotation id to the server-assigned pk
-                const serverPk = String(newAnno.pk);
-                delete this._taxoMap[tempId];
-                if (taxo) this._taxoMap[serverPk] = taxo;
-                this.anno.removeAnnotation(tempId);
-                const updated = { ...annotation, id: serverPk };
-                this.anno.addAnnotation(updated);
+                try {
+                    const newAnno = await this.createTextAnnotation(body);
+                    // Record UUID → server pk. The annotation stays in the library under
+                    // its UUID — no DOM Range is touched, no lifecycle events are fired.
+                    const serverPk = String(newAnno.pk);
+                    this._idMap[tempId] = serverPk;
+                    this._bodyCache[serverPk] = annoBody;
+                } catch (e) {
+                    console.error("Failed to save annotation:", e?.response?.data || e);
+                }
+                // Open the editor popup after the async save completes.
+                this.$nextTick(() => this.showAnnoEditor(tempId));
             }.bind(this));
 
             this.anno.on("updateAnnotation", function(annotation) {
-                const selectors = Array.isArray(annotation.target.selector)
-                    ? annotation.target.selector
-                    : [annotation.target.selector];
-                const offsets = selectors.find((s) => s.type === "TextPositionSelector");
-                let body = this.getAPITextAnnotationBody(annotation, offsets);
-                body.id = annotation.id;
+                const annoBody = Array.isArray(annotation.body) ? annotation.body : [];
+                this._bodyCache[annotation.id] = annoBody;
+                const offsets = getTextPositionSelector(annotation);
+                let body = this.getAPITextAnnotationBody({ ...annotation, body: annoBody }, offsets);
+                body.id = this._idMap[annotation.id] || annotation.id;
                 this.updateTextAnnotation(body);
             }.bind(this));
 
             this.anno.on("deleteAnnotation", function(annotation) {
+                const serverId = this._idMap[annotation.id] || annotation.id;
+                delete this._idMap[annotation.id];
                 delete this._taxoMap[annotation.id];
-                this.deleteTextAnnotation(annotation.id);
+                this.deleteTextAnnotation(serverId);
             }.bind(this));
         },
 
@@ -696,7 +845,7 @@ export default {
                 const posSelector = selectors.find((s) => s.type === "TextPositionSelector");
                 if (!posSelector) continue;
                 let body = this.getAPITextAnnotationBody(anno, posSelector);
-                body.id = anno.id;
+                body.id = this._idMap[anno.id] || anno.id;
                 this.updateTextAnnotation(body);
             }
         },
@@ -1284,6 +1433,110 @@ export default {
                 this.setIsDragging(false);
             }, 100);
         },
+
+        showAnnoEditor(annotationId) {
+            if (!this.currentTaxonomy) return;
+            const hasForms = this.currentTaxonomy.has_comments
+                || (this.currentTaxonomy.components && this.currentTaxonomy.components.length);
+            if (!hasForms) return;
+
+            const bodies = this._bodyCache[annotationId] || [];
+
+            const commentBody = bodies.find((b) => b.purpose === "commenting");
+            this.annoEditorComment = commentBody ? commentBody.value : "";
+
+            const attrs = {};
+            (this.currentTaxonomy.components || []).forEach((comp) => {
+                const body = bodies.find((b) => b.purpose === "attribute-" + comp.name);
+                attrs[comp.name] = body ? body.value : "";
+            });
+            this.annoEditorAttrs = attrs;
+            this.annoEditorComponents = this.currentTaxonomy.components || [];
+            this.annoEditorAnnotationId = annotationId;
+
+            // position popup below the last annotation highlight span
+            const container = this.$refs.contentContainer;
+            const containerRect = container.getBoundingClientRect();
+            const spans = container.querySelectorAll(".r6o-annotation");
+            const anchor = spans.length ? spans[spans.length - 1] : container;
+            const rect = anchor.getBoundingClientRect();
+            this.annoEditorStyle = {
+                position: "absolute",
+                top: (rect.bottom - containerRect.top + container.scrollTop + 4) + "px",
+                left: (rect.left - containerRect.left) + "px",
+                zIndex: 1000,
+            };
+            this.annoEditorVisible = true;
+        },
+
+        submitAnnoEditor() {
+            const annotationId = this.annoEditorAnnotationId;
+            this.annoEditorVisible = false;
+            if (!annotationId) return;
+
+            // Use cached bodies to avoid calling getAnnotationById (causes reactive
+            // serialization that crashes if the annotation's DOM Range is invalid).
+            const existingBodies = this._bodyCache[annotationId] || [];
+            const otherBodies = existingBodies
+                .filter((b) => b.purpose !== "commenting" && !b.purpose?.startsWith("attribute-"));
+
+            const newBodies = [...otherBodies];
+            if (this.currentTaxonomy?.has_comments && this.annoEditorComment) {
+                newBodies.push({ type: "TextualBody", purpose: "commenting", value: this.annoEditorComment });
+            }
+            Object.entries(this.annoEditorAttrs).forEach(([name, value]) => {
+                if (value !== "" && value !== undefined) {
+                    newBodies.push({ type: "TextualBody", purpose: "attribute-" + name, value });
+                }
+            });
+
+            // updateAnnotation needs the full W3C annotation object. We must call
+            // getAnnotationById here — it's unavoidable for the update — but we've
+            // already removed it from showAnnoEditor where it was causing crashes.
+            const annotation = this.anno.getAnnotationById(annotationId);
+            if (!annotation) return;
+            this.anno.updateAnnotation({ ...annotation, body: newBodies });
+        },
+
+        cancelAnnoEditor() {
+            this.annoEditorVisible = false;
+        },
+
+        deleteAnnoEditor() {
+            const annotationId = this.annoEditorAnnotationId;
+            this.annoEditorVisible = false;
+            if (!annotationId) return;
+            this.anno.removeAnnotation(annotationId);
+        },
     }
 }
 </script>
+
+<style scoped>
+.escr-anno-editor-popup {
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    padding: 8px;
+    min-width: 200px;
+    max-width: 320px;
+}
+.escr-anno-editor-field {
+    margin-bottom: 6px;
+}
+.escr-anno-editor-field label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+.escr-anno-editor-actions {
+    margin-top: 8px;
+    text-align: right;
+}
+.escr-anno-editor-actions button svg {
+    fill: currentColor;
+    vertical-align: middle;
+}
+</style>
