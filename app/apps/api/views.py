@@ -875,7 +875,7 @@ class DocumentMetadataViewSet(DocumentPermissionMixin, ModelViewSet):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context['document'] = self.document
+        context['document'] = Document.objects.get(pk=self.kwargs.get('document_pk'))
         return context
 
 
