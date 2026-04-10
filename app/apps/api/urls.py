@@ -32,6 +32,13 @@ from api.views import (
     UserViewSet,
 )
 
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularSwaggerView,
+    SpectacularRedocView,
+)
+
+
 router = routers.DefaultRouter()
 router.register(r'scripts', ScriptViewSet)
 router.register(r'textual-witnesses', TextualWitnessViewSet)
@@ -67,6 +74,9 @@ parts_router.register(r'annotations/image', ImageAnnotationViewSet)
 parts_router.register(r'annotations/text', TextAnnotationViewSet)
 parts_router.register(r'metadata', PartMetadataViewSet, basename='partmetadata')
 
+projects_router = routers.NestedSimpleRouter(router, r'projects', lookup='project')
+projects_router.register(r'tags', DocumentTagViewSet, basename='document-tag')
+
 app_name = 'api'
 urlpatterns = [
     path('', include(router.urls)),
@@ -74,5 +84,11 @@ urlpatterns = [
     path('', include(parts_router.urls)),
     path('', include(projects_router.urls)),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
-    path('token-auth/', RegenerableAuthToken.as_view())
+    path('token-auth/', RegenerableAuthToken.as_view()),
+]
+
+urlpatterns += [
+    path('schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('swagger/', SpectacularSwaggerView.as_view(url_name='api:schema'), name='swagger-ui'),
+    path('redoc/', SpectacularRedocView.as_view(url_name='api:schema'), name='redoc'),
 ]

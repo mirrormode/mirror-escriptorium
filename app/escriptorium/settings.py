@@ -15,6 +15,7 @@ import os
 import sys
 
 from django.utils.translation import gettext_lazy as _
+
 from kombu import Queue
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
@@ -70,6 +71,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'django_filters',
     'captcha',
+    'drf_spectacular',
 
     'bootstrap',
     'versioning',
@@ -435,6 +437,47 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'core.pagination.CustomPagination',
     'PAGE_SIZE': 10,
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'eScriptorium API',
+    'DESCRIPTION':  """eScriptorium REST API
+
+### Authentication
+
+- Django Session Login: [/api/api-auth/login/](../api-auth/login/)
+- Token Auth: `POST /api/token-auth/`
+
+After login, use the **Authorize** button.
+
+Token endpoint:
+POST /api/token-auth/
+
+### Licenses
+[MIT License](https://choosealicense.com/licenses/mit/)
+""",
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SECURITY': [
+        {'cookieAuth': []},
+        {'tokenAuth': []},
+    ],
+    'ENUM_ADD_EXPLICIT_BLANK_NULL_CHOICE': False,
+    'SERVE_PERMISSIONS': ['rest_framework.permissions.IsAuthenticated'],
+    'SECURITY_SCHEMES': {
+        'tokenAuth': {
+            'type': 'http',
+            'scheme': 'bearer',
+            'bearerFormat': 'Token',
+        },
+        'cookieAuth': {
+            'type': 'apiKey',
+            'in': 'cookie',
+            'name': 'sessionid',
+        },
+    },
 }
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000

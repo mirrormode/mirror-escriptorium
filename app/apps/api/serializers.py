@@ -11,6 +11,8 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from easy_thumbnails.files import get_thumbnailer
 from rest_framework import fields, serializers
+from typing import Optional, Dict, List, Any
+from datetime import datetime
 
 from api.fields import DisplayChoiceField
 from core.models import (
@@ -101,13 +103,13 @@ class UserSerializer(serializers.ModelSerializer):
                   'date_joined', 'last_login', 'is_staff', 'can_invite')
         read_only_fields = ('date_joined', 'last_login', 'is_staff', 'can_invite')
 
-    def get_can_invite(self, user):
+    def get_can_invite(self, user) -> bool:
         return user.has_perms(['users.can_invite'])
 
 
 class DetailedGroupSerializer(serializers.ModelSerializer):
     users = UserSerializer(many=True, read_only=True, source='user_set')
-    owner = serializers.ReadOnlyField(source='groupowner.owner.pk')
+    owner = serializers.IntegerField(source='groupowner.owner.pk', read_only=True)
 
     class Meta:
         model = Group
@@ -133,7 +135,7 @@ class ProjectTagSerializer(serializers.ModelSerializer):
 class ProjectSerializer(serializers.ModelSerializer):
     owner = serializers.ReadOnlyField(source='owner.username')
     slug = serializers.ReadOnlyField()
-    documents_count = serializers.ReadOnlyField()
+    documents_count = serializers.IntegerField(read_only=True)
     shared_with_users = UserSerializer(many=True, read_only=True)
     shared_with_groups = GroupSerializer(many=True, read_only=True)
 
@@ -260,7 +262,13 @@ class AnnotationTaxonomySerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['components'].queryset = AnnotationComponent.objects.filter(document=self.context['view'].kwargs['document_pk'])
+        view = self.context.get('view')
+        document_pk = getattr(view, 'kwargs', {}).get('document_pk')
+
+        if document_pk:
+            self.fields['components'].queryset = AnnotationComponent.objects.filter(
+                document=document_pk
+            )
 
     def create(self, data):
         try:
@@ -335,7 +343,7 @@ class TextAnnotationComponentSerializer(serializers.ModelSerializer):
 
 class ImageAnnotationSerializer(serializers.ModelSerializer):
     components = ImageAnnotationComponentSerializer(many=True)
-    as_w3c = serializers.ReadOnlyField()
+    as_w3c = serializers.JSONField(read_only=True)
 
     class Meta:
         model = ImageAnnotation
@@ -367,7 +375,7 @@ class ImageAnnotationSerializer(serializers.ModelSerializer):
 
 class TextAnnotationSerializer(serializers.ModelSerializer):
     components = TextAnnotationComponentSerializer(many=True)
-    as_w3c = serializers.ReadOnlyField()
+    as_w3c = serializers.JSONField(read_only=True)
 
     class Meta:
         model = TextAnnotation
@@ -411,7 +419,7 @@ class DocumentSerializer(serializers.ModelSerializer):
     valid_block_types = BlockTypeSerializer(many=True, read_only=True)
     valid_line_types = LineTypeSerializer(many=True, read_only=True)
     valid_part_types = DocumentPartTypeSerializer(many=True, read_only=True)
-    parts_count = serializers.ReadOnlyField()
+    parts_count = serializers.IntegerField(read_only=True)
     project = serializers.SlugRelatedField(slug_field='slug',
                                            queryset=Project.objects.all())
     project_name = serializers.SerializerMethodField()
@@ -430,7 +438,9 @@ class DocumentSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['project'].queryset = Project.objects.for_user_write(self.context['user'])
+        user = self.context.get('user')
+        if user:
+            self.fields['project'].queryset = Project.objects.for_user_write(user)
 
     def validate_main_script(self, value):
         try:
@@ -438,10 +448,10 @@ class DocumentSerializer(serializers.ModelSerializer):
         except Script.DoesNotExist:
             raise serializers.ValidationError('This script does not exists in the database.')
 
-    def get_project_name(self, document):
+    def get_project_name(self, document) -> str:
         return document.project.name
 
-    def get_project_id(self, document):
+    def get_project_id(self, document) -> int:
         return document.project.id
 
     def to_representation(self, instance):
@@ -460,16 +470,16 @@ class DocumentTasksSerializer(serializers.ModelSerializer):
         model = Document
         fields = ('pk', 'name', 'owner', 'tasks_stats', 'last_started_task')
 
-    def get_owner(self, document):
+    def get_owner(self, document) -> Optional[str]:
         return document.owner.username if document.owner else None
 
-    def get_tasks_stats(self, document):
+    def get_tasks_stats(self, document) -> Dict[str, int]:
         stats = {state: 0 for state, _ in TaskReport.WORKFLOW_STATE_CHOICES}
         stats.update(dict(document.reports.values('workflow_state').annotate(c=Count('pk')).values_list('workflow_state', 'c')))
         stats = {str(TaskReport.WORKFLOW_STATE_CHOICES[state][1]): count for state, count in stats.items()}
         return stats
 
-    def get_last_started_task(self, document):
+    def get_last_started_task(self, document) -> Optional[datetime]:
         try:
             last_task = document.reports.filter(started_at__isnull=False).latest('started_at')
         except TaskReport.DoesNotExist:
@@ -488,10 +498,10 @@ class TaskGroupSerializer(serializers.ModelSerializer):
         model = TaskGroup
         fields = ('pk', 'method', 'created_at', 'created_by', 'tasks', 'page_count')
 
-    def get_created_by(self, task_group):
+    def get_created_by(self, task_group) -> Optional[str]:
         return task_group.created_by.username if task_group.created_by else None
 
-    def get_tasks(self, task_group):
+    def get_tasks(self, task_group) -> List[Dict[str, Any]]:
         data = task_group.taskreport_set.values('workflow_state').annotate(queued_at=Min('queued_at'),
                                                                            started_at=Min('started_at'),
                                                                            done_at=Max('done_at'),
@@ -500,13 +510,13 @@ class TaskGroupSerializer(serializers.ModelSerializer):
             state['workflow_state'] = dict(TaskReport.WORKFLOW_STATE_CHOICES)[state['workflow_state']]
         return data
 
-    def get_method(self, task_group):
+    def get_method(self, task_group) -> Optional[str]:
         try:
             return task_group.taskreport_set.values_list('method').first()[0]
         except TypeError:
             return None
 
-    def get_page_count(self, task_group):
+    def get_page_count(self, task_group) -> int:
         trs = task_group.taskreport_set.exclude(document_part__isnull=True)
         return trs.values_list('document_part', flat=True).distinct().count()
 
@@ -519,7 +529,7 @@ class TaskReportSerializer(serializers.ModelSerializer):
         fields = ('pk', 'document', 'document_part', 'workflow_state', 'label', 'messages',
                   'queued_at', 'started_at', 'done_at', 'method', 'user')
 
-    def get_document_part(self, task_report):
+    def get_document_part(self, task_report) -> Optional[str]:
         return str(task_report.document_part) if task_report.document_part else None
 
 
@@ -598,6 +608,8 @@ class PartSerializer(serializers.ModelSerializer):
     filename = serializers.CharField(read_only=True)
     workflow = serializers.JSONField(read_only=True)
     transcription_progress = serializers.IntegerField(read_only=True)
+    title = serializers.CharField(read_only=True)
+    recoverable = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = DocumentPart
@@ -785,12 +797,12 @@ class PartDetailSerializer(PartSerializer):
             'metadata',
             'next')
 
-    def get_previous(self, instance):
+    def get_previous(self, instance) -> Optional[int]:
         prev = DocumentPart.objects.filter(
             document=instance.document, order__lt=instance.order).order_by('-order').first()
         return prev and prev.pk or None
 
-    def get_next(self, instance):
+    def get_next(self, instance) -> Optional[int]:
         nex = DocumentPart.objects.filter(
             document=instance.document, order__gt=instance.order).order_by('order').first()
         return nex and nex.pk or None
@@ -799,12 +811,13 @@ class PartDetailSerializer(PartSerializer):
 class OcrModelSerializer(serializers.ModelSerializer):
     owner = serializers.ReadOnlyField(source='owner.username')
     job = DisplayChoiceField(choices=OcrModel.MODEL_JOB_CHOICES)
-    training = serializers.ReadOnlyField()
+    training = serializers.BooleanField(read_only=True)
     file_size = serializers.IntegerField(required=False)
     rights = serializers.SerializerMethodField(source='get_rights')
     script = serializers.ReadOnlyField(source='script.name')
     parent = serializers.ReadOnlyField(source='parent.name')
     can_share = serializers.SerializerMethodField(source='get_can_share')
+    accuracy_percent = serializers.FloatField(read_only=True)
 
     class Meta:
         model = OcrModel
@@ -822,7 +835,7 @@ class OcrModelSerializer(serializers.ModelSerializer):
         obj = super().create(data)
         return obj
 
-    def get_rights(self, instance):
+    def get_rights(self, instance) -> str:
         # get the requesting user's permissions for the model
         user = self.context["view"].request.user
         if instance.owner == user:
@@ -832,7 +845,7 @@ class OcrModelSerializer(serializers.ModelSerializer):
         else:
             return "user"
 
-    def get_can_share(self, instance):
+    def get_can_share(self, instance) -> bool:
         user = self.context["view"].request.user
         return instance.owner == user and not instance.public
 
@@ -844,18 +857,20 @@ class ProcessSerializerMixin():
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.user = self.context["view"].request.user
-        self.document = self.context["document"]
+        view = self.context.get("view")
+        request = getattr(view, "request", None)
+        self.user = getattr(request, "user", None)
+        self.document = self.context.get("document")
 
     def validate(self, data):
         data = super().validate(data)
         # If quotas are enforced, assert that the user still has free CPU minutes, GPU minutes and disk storage
         if not settings.DISABLE_QUOTAS:
-            if not self.user.has_free_cpu_minutes():
+            if self.user and not self.user.has_free_cpu_minutes():
                 raise serializers.ValidationError(_("You don't have any CPU minutes left."))
-            if self.CHECK_GPU_QUOTA and not self.user.has_free_gpu_minutes():
+            if self.CHECK_GPU_QUOTA and self.user and not self.user.has_free_gpu_minutes():
                 raise serializers.ValidationError(_("You don't have any GPU minutes left."))
-            if self.CHECK_DISK_QUOTA and not self.user.has_free_disk_storage():
+            if self.CHECK_DISK_QUOTA and self.user and not self.user.has_free_disk_storage():
                 raise serializers.ValidationError(_("You don't have any disk storage left."))
         return data
 
@@ -1093,7 +1108,7 @@ class ImportSerializer(ProcessSerializerMixin, serializers.Serializer):
                 raise serializers.ValidationError("'upload_file' is mandatory with mode 'xml'.")
 
         if not settings.DISABLE_QUOTAS:
-            if not self.user.has_free_cpu_minutes():
+            if self.user and not self.user.has_free_cpu_minutes():
                 raise serializers.ValidationError(_("You don't have any CPU minutes left."))
 
         return data
@@ -1360,16 +1375,17 @@ class AlignSerializer(ProcessSerializerMixin, serializers.Serializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['transcription'].queryset = self.document.transcriptions.filter(archived=False)
-        self.fields['existing_witness'].queryset = TextualWitness.objects.filter(owner=self.user)
-        self.fields['region_types'].choices = {
-            **self.fields['region_types'].choices,
-            **{
-                str(rt.id): rt.name
-                for rt in self.document.valid_block_types.all()
-            },
-        }
-        self.fields['parts'].queryset = DocumentPart.objects.filter(document=self.document)
+        if self.document:
+            self.fields['transcription'].queryset = self.document.transcriptions.filter(archived=False)
+            self.fields['existing_witness'].queryset = TextualWitness.objects.filter(owner=self.user)
+            self.fields['region_types'].choices = {
+                **self.fields['region_types'].choices,
+                **{
+                    str(rt.id): rt.name
+                    for rt in self.document.valid_block_types.all()
+                },
+            }
+            self.fields['parts'].queryset = DocumentPart.objects.filter(document=self.document)
 
     def validate(self, data):
         data = super().validate(data)

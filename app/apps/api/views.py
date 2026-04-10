@@ -25,6 +25,8 @@ from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.serializers import PrimaryKeyRelatedField
 from rest_framework.viewsets import GenericViewSet, ModelViewSet, ReadOnlyModelViewSet
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 
 from api.serializers import (
     AlignSerializer,
@@ -100,6 +102,26 @@ from reporting.models import TaskGroup, TaskReport
 from users.consumers import send_event
 from users.models import Group, User
 from versioning.models import NoChangeException
+
+
+from rest_framework.viewsets import ModelViewSet
+
+nested_document_part_schema = extend_schema(
+    parameters=[
+        OpenApiParameter(
+            name="document_pk",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            description="ID of the document",
+        ),
+        OpenApiParameter(
+            name="part_pk",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            description="ID of the document part",
+        ),
+    ]
+)
 
 logger = logging.getLogger(__name__)
 
@@ -303,6 +325,41 @@ class DocumentTagViewSet(ModelViewSet):
         return DocumentTag.objects.filter(project__pk=self.kwargs.get('project_pk'))
 
 
+@extend_schema_view(
+    tasks=extend_schema(
+        summary="List documents with active tasks",
+        description="Returns documents that have queued or running tasks.",
+    ),
+    cancel_tasks=extend_schema(
+        summary="Cancel document tasks",
+        description="Cancel all running or queued tasks for this document.",
+    ),
+    segment=extend_schema(
+        summary="Run segmentation",
+        description="Run line and/or region segmentation on selected parts.",
+        request=SegmentSerializer,
+    ),
+    segtrain=extend_schema(
+        summary="Train segmentation model",
+        description="Train a segmentation model using selected parts.",
+        request=SegTrainSerializer,
+    ),
+    train=extend_schema(
+        summary="Train recognition model",
+        description="Train an OCR recognition model.",
+        request=TrainSerializer,
+    ),
+    transcribe=extend_schema(
+        summary="Run recognition",
+        description="Apply OCR recognition to selected parts.",
+        request=TranscribeSerializer,
+    ),
+    align=extend_schema(
+        summary="Run text alignment",
+        description="Align transcription with witness text.",
+        request=AlignSerializer,
+    ),
+)
 class DocumentViewSet(ModelViewSet):
     queryset = Document.objects.all()
     serializer_class = DocumentSerializer
@@ -550,6 +607,10 @@ class DocumentViewSet(ModelViewSet):
     def align(self, request, pk=None):
         return self.get_process_response(request, AlignSerializer)
 
+    @extend_schema(
+        request=OpenApiTypes.OBJECT,
+        description="Force alignment with explicit model and transcription."
+    )
     @action(detail=True, methods=['post'])
     def forced_align(self, request, pk=None):
 
@@ -759,6 +820,14 @@ class DocumentViewSet(ModelViewSet):
         })
 
 
+@extend_schema_view(
+    list=nested_document_part_schema,
+    retrieve=nested_document_part_schema,
+    create=nested_document_part_schema,
+    update=nested_document_part_schema,
+    partial_update=nested_document_part_schema,
+    destroy=nested_document_part_schema,
+)
 class TaskGroupViewSet(ModelViewSet):
     queryset = TaskGroup.objects.all().select_related('created_by')
     serializer_class = TaskGroupSerializer
@@ -810,6 +879,14 @@ class DocumentMetadataViewSet(DocumentPermissionMixin, ModelViewSet):
         return context
 
 
+@extend_schema_view(
+    list=nested_document_part_schema,
+    retrieve=nested_document_part_schema,
+    create=nested_document_part_schema,
+    update=nested_document_part_schema,
+    partial_update=nested_document_part_schema,
+    destroy=nested_document_part_schema,
+)
 class PartMetadataViewSet(DocumentPermissionMixin, ModelViewSet):
     queryset = DocumentPartMetadata.objects.all().select_related('part')
     serializer_class = DocumentPartMetadataSerializer
@@ -831,7 +908,7 @@ class ImportViewSet(DocumentPermissionMixin, GenericViewSet, CreateModelMixin):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         context['user'] = self.request.user
-        context['document'] = Document.objects.get(pk=self.kwargs.get('document_pk'))
+        context['document'] = self.document
         return context
 
     def create(self, request, document_pk=None):
@@ -1047,6 +1124,14 @@ class AnnotationComponentViewSet(DocumentPermissionMixin, ModelViewSet):
         return super().get_queryset().filter(document=self.document)
 
 
+@extend_schema_view(
+    list=nested_document_part_schema,
+    retrieve=nested_document_part_schema,
+    create=nested_document_part_schema,
+    update=nested_document_part_schema,
+    partial_update=nested_document_part_schema,
+    destroy=nested_document_part_schema,
+)
 class AnnotationTaxonomyViewSet(DocumentPermissionMixin, ModelViewSet):
     queryset = AnnotationTaxonomy.objects.all()
     serializer_class = AnnotationTaxonomySerializer
@@ -1066,6 +1151,14 @@ class AnnotationTaxonomyViewSet(DocumentPermissionMixin, ModelViewSet):
             return qs
 
 
+@extend_schema_view(
+    list=nested_document_part_schema,
+    retrieve=nested_document_part_schema,
+    create=nested_document_part_schema,
+    update=nested_document_part_schema,
+    partial_update=nested_document_part_schema,
+    destroy=nested_document_part_schema,
+)
 class ImageAnnotationViewSet(DocumentPermissionMixin, ModelViewSet):
     queryset = ImageAnnotation.objects.all()
     serializer_class = ImageAnnotationSerializer
@@ -1076,6 +1169,15 @@ class ImageAnnotationViewSet(DocumentPermissionMixin, ModelViewSet):
                 .filter(part=self.kwargs['part_pk'])
                 .filter(part__document=self.kwargs['document_pk']))
 
+
+@extend_schema_view(
+    list=nested_document_part_schema,
+    retrieve=nested_document_part_schema,
+    create=nested_document_part_schema,
+    update=nested_document_part_schema,
+    partial_update=nested_document_part_schema,
+    destroy=nested_document_part_schema,
+)
 
 class TextAnnotationViewSet(DocumentPermissionMixin, ModelViewSet):
     queryset = TextAnnotation.objects.all()
@@ -1095,6 +1197,14 @@ class TextAnnotationViewSet(DocumentPermissionMixin, ModelViewSet):
         return qs
 
 
+@extend_schema_view(
+    list=nested_document_part_schema,
+    retrieve=nested_document_part_schema,
+    create=nested_document_part_schema,
+    update=nested_document_part_schema,
+    partial_update=nested_document_part_schema,
+    destroy=nested_document_part_schema,
+)
 class BlockViewSet(DocumentPermissionMixin, ModelViewSet):
     queryset = Block.objects.select_related('typology')
     serializer_class = BlockSerializer
@@ -1105,6 +1215,12 @@ class BlockViewSet(DocumentPermissionMixin, ModelViewSet):
                 .filter(document_part__document=self.kwargs['document_pk']))
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter("document_pk", OpenApiTypes.INT, location=OpenApiParameter.PATH),
+        OpenApiParameter("part_pk", OpenApiTypes.INT, location=OpenApiParameter.PATH),
+    ]
+)
 class LineViewSet(DocumentPermissionMixin, ModelViewSet):
     queryset = (Line.objects.select_related('block')
                             .select_related('typology'))
@@ -1228,10 +1344,24 @@ class LineViewSet(DocumentPermissionMixin, ModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter("document_pk", OpenApiTypes.INT, location=OpenApiParameter.PATH),
+        OpenApiParameter("part_pk", OpenApiTypes.INT, location=OpenApiParameter.PATH),
+    ]
+)
 class LineTranscriptionViewSet(DocumentPermissionMixin, ModelViewSet):
     queryset = LineTranscription.objects.all()
     serializer_class = LineTranscriptionSerializer
     pagination_class = LargeResultsSetPagination
+
+    @extend_schema(operation_id="document_part_transcription_list")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(operation_id="document_part_transcription_retrieve")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
 
     def get_queryset(self):
         qs = (super().get_queryset()
@@ -1269,10 +1399,15 @@ class LineTranscriptionViewSet(DocumentPermissionMixin, ModelViewSet):
         return Response(serializer.data)
 
     def get_serializer_class(self):
-        lines = Line.objects.filter(document_part=self.kwargs['part_pk'])
+        part_pk = self.kwargs.get('part_pk')
+        if not part_pk:
+            return self.serializer_class
+
+        lines = Line.objects.filter(document_part=part_pk)
 
         class RuntimeSerializer(self.serializer_class):
             line = PrimaryKeyRelatedField(queryset=lines)
+
         return RuntimeSerializer
 
     @action(detail=False, methods=['POST'])
