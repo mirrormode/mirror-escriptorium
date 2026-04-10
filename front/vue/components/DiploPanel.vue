@@ -611,6 +611,16 @@ export default {
                 formatter: this.textAnnoFormatter.bind(this),
             });
 
+            // Guard against Escape with no active selection: the library calls
+            // handleCancelSelected(undefined) which crashes on annotation.underlying
+            // before the event is emitted. Intercept here to drop the bad call.
+            const emitter = this.anno._emitter;
+            const _emit = emitter.emit;
+            emitter.emit = (event, data, ...rest) => {
+                if (event === "cancelSelected" && data === undefined) return;
+                return _emit.call(emitter, event, data, ...rest);
+            };
+
             this.isEditorOpen = false;
             const editorOpenObserver = function(mutationsList) {
                 // let's hope for no race condition with the contenteditable focusin/out...
