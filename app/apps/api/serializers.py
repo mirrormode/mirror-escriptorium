@@ -444,7 +444,7 @@ class DocumentSerializer(serializers.ModelSerializer):
 
     def validate_main_script(self, value):
         try:
-            return value
+            return Script.objects.get(name=value)
         except Script.DoesNotExist:
             raise serializers.ValidationError('This script does not exists in the database.')
 
