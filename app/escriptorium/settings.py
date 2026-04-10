@@ -446,29 +446,21 @@ REST_FRAMEWORK = {
         'anon': '60/min',
         'user': '600/min',
     },
-    'DEFAULT_VERSIONING_CLASS': 'rest_framework.versioning.URLPathVersioning',
-    'DEFAULT_VERSION': 'v1',
-    'ALLOWED_VERSIONS': ['v1'],
-    'VERSION_PARAM': 'version',
 }
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'eScriptorium API',
     'DESCRIPTION':  """eScriptorium REST API
-    
-## API Versioning
-The API is versioned using URL path versioning. The current version is v1, and the base URL for the API is /api/v1/. Future versions will be accessible under /api/v2/, etc.
-
 
 ### Authentication
 
-- Django Session Login: [/api/v1/api-auth/login/](../api-auth/login/)
-- Token Auth: `POST /api/v1/token-auth/`
+- Django Session Login: [/api/api-auth/login/](../api-auth/login/)
+- Token Auth: `POST /api/token-auth/`
 
 After login, use the **Authorize** button.
 
 Token endpoint:
-POST /api/v1/token-auth/
+POST /api/token-auth/
 
 ### Licenses
 [MIT License](https://choosealicense.com/licenses/mit/)

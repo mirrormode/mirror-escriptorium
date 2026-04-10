@@ -25,7 +25,7 @@ urlpatterns = [
     path('', include('imports.urls')),
     path('', include('users.urls')),
     path('', include('reporting.urls')),
-    path("api/", include("apps.api.urls")),
+    path('api/', include('api.urls', namespace='api')),
     path('captcha/', include('captcha.urls')),
     path('', include('django_prometheus.urls')),
     path('i18n/', include('django.conf.urls.i18n')),
