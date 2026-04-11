@@ -14,7 +14,7 @@ export default Vue.extend({
             }
         },
         "line.mask": function(n, o) {
-            if (!_.isEqual(n, o)) {
+            if (!_.isEqual(n, o) && this.segmenterObject) {
                 this.segmenterObject.update(undefined, n);
             }
         },

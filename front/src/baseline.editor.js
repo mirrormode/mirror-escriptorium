@@ -1533,11 +1533,12 @@ export class Segmenter {
                 let location = line.baselinePath.getNearestLocation(
                     event.point,
                 );
-                let newSegment = line.baselinePath.insert(
-                    location.index + 1,
-                    location,
-                );
+                line.baselinePath.insert(location.index + 1, location);
                 // line.baselinePath.smooth({ type: 'catmull-rom', 'factor': 0.2 });
+                // updateDataFromCanvas must be called AFTER the segment is inserted.
+                // tool.onMouseUp fires before the dblclick event, so the insertion
+                // would otherwise never be serialized to the server.
+                line.updateDataFromCanvas();
             }.bind(this);
 
             line.baselinePath.onMouseMove = function (event) {

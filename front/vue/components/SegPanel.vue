@@ -400,6 +400,7 @@ export default Vue.extend({
             colorMode: "color", //  color - binary - grayscale
             undoManager: new UndoManager(),
             isWorking: false,
+            pendingContexts: new Set(),
             autoOrder: userProfile.get("autoOrder", true),
             toolbarDetached: false,
             toolbarDragging: false,
@@ -692,47 +693,8 @@ export default Vue.extend({
                 );
                 this.segmenter.events.addEventListener(
                     "baseline-editor:update",
-                    function (ev) {
-                        // same event for creation and modification of a line/region
-                        let data = ev.detail;
-                        this.extractPrevious(data);
-                        let toCreate = {
-                            lines:
-                (data.lines &&
-                  data.lines.filter((l) => l.context.pk === null)) ||
-                [],
-                            regions:
-                (data.regions &&
-                  data.regions.filter((l) => l.context.pk === null)) ||
-                [],
-                        };
-                        let toUpdate = {
-                            lines:
-                (data.lines &&
-                  data.lines.filter((l) => l.context.pk !== null)) ||
-                [],
-                            regions:
-                (data.regions &&
-                  data.regions.filter((l) => l.context.pk !== null)) ||
-                [],
-                        };
-                        this.bulkCreate(toCreate, false);
-                        this.bulkUpdate(toUpdate);
-                        this.pushHistory(
-                            function () {
-                                // undo
-                                this.bulkDelete(toCreate);
-                                this.bulkUpdate({
-                                    lines: toUpdate.lines.map((l) => l.previous),
-                                    regions: toUpdate.regions.map((r) => r.previous),
-                                });
-                            }.bind(this),
-                            function () {
-                                // redo
-                                this.bulkCreate(toCreate, true);
-                                this.bulkUpdate(toUpdate);
-                            }.bind(this)
-                        );
+                    async function (ev) {
+                        await this.handleBaselineUpdate(ev.detail);
                     }.bind(this)
                 );
             }.bind(this)
@@ -852,6 +814,53 @@ export default Vue.extend({
             }
         },
         // undo manager helpers
+        async handleBaselineUpdate(data) {
+            // same event for creation and modification of a line/region
+            this.extractPrevious(data);
+            let toCreate = {
+                lines:
+                    (data.lines &&
+                        data.lines.filter((l) => l.context.pk === null && !this.pendingContexts.has(l.context))) ||
+                    [],
+                regions:
+                    (data.regions &&
+                        data.regions.filter((l) => l.context.pk === null)) ||
+                    [],
+            };
+            let toUpdate = {
+                lines:
+                    (data.lines &&
+                        data.lines.filter((l) => l.context.pk !== null)) ||
+                    [],
+                regions:
+                    (data.regions &&
+                        data.regions.filter((l) => l.context.pk !== null)) ||
+                    [],
+            };
+            // Mark new lines as pending before the async create so that
+            // subsequent frame ticks don't re-submit them as a second creation
+            // while the first request is still in flight (double-line bug).
+            for (const l of toCreate.lines) this.pendingContexts.add(l.context);
+            await this.bulkCreate(toCreate, false);
+            await this.bulkUpdate(toUpdate);
+            // Push history only after both requests complete so that the undo
+            // closure captures lines that already have their server-assigned pk.
+            this.pushHistory(
+                function () {
+                    // undo
+                    this.bulkDelete(toCreate);
+                    this.bulkUpdate({
+                        lines: toUpdate.lines.map((l) => l.previous),
+                        regions: toUpdate.regions.map((r) => r.previous),
+                    });
+                }.bind(this),
+                function () {
+                    // redo
+                    this.bulkCreate(toCreate, true);
+                    this.bulkUpdate(toUpdate);
+                }.bind(this)
+            );
+        },
         async bulkCreate(data, createInEditor) {
             if (data.regions && data.regions.length) {
                 // note: regions dont get a bulk_create
@@ -910,8 +919,9 @@ export default Vue.extend({
                             );
                             this.segmenter.loadLine(line, region);
                         }
-                        // update the segmenter pk
+                        // update the segmenter pk and release the pending-create guard
                         data.lines[i].context.pk = line.pk;
+                        this.pendingContexts.delete(data.lines[i].context);
                         this.$store.commit("lines/load", line.pk);
                     }
                 } catch (err) {
