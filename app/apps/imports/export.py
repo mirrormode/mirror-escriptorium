@@ -540,28 +540,13 @@ class JsonExporter(BaseExporter):
                 .order_by("avglo", "order", "pk")
             )
 
-            prev_block = None
-
             for block in blocks:
-                node = {
+                graph.append({
                     "id": f"block_{block.pk}",
                     "type": "block",
                     "box": block.box,
                     "typology": block.typology.name if block.typology else None,
-                }
-
-                graph.append({"node": node})
-
-                if prev_block:
-                    graph.append({
-                        "edge": {
-                            "from": f"block_{prev_block.pk}",
-                            "to": f"block_{block.pk}",
-                            "type": "reading_order"
-                        }
-                    })
-
-                prev_block = block
+                })
 
         return graph
 
