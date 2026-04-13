@@ -43,6 +43,8 @@ class BaseExporter:
         include_metadata,
         include_models,
         include_graph,
+        include_annotations,
+        include_comments,
         all_transcriptions,
         user,
         document,
@@ -60,6 +62,8 @@ class BaseExporter:
         self.include_metadata = include_metadata
         self.include_models = include_models
         self.include_graph = include_graph
+        self.include_annotations = include_annotations
+        self.include_comments = include_comments
         self.all_transcriptions = all_transcriptions
 
         self.prepare_for_rendering()
@@ -434,10 +438,89 @@ class JsonExporter(BaseExporter):
         if self.include_graph:
             payload["graph"] = self._build_reading_graph(parts)
 
+        if self.include_annotations:
+            payload["annotations"] = self._serialize_annotations(parts)
 
+        if self.include_comments:
+            payload["comments"] = self._serialize_comments(parts)
 
-        with open(self.filepath, "w", encoding="utf-8") as fh:
-            json.dump(payload, fh, ensure_ascii=False, indent=2)
+        json_content = json.dumps(payload, ensure_ascii=False, indent=2)
+
+        if self.include_images:
+            zip_path = self.filepath.rsplit(".", 1)[0] + ".zip"
+            json_arcname = os.path.basename(self.filepath)
+            with EsZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr(json_arcname, json_content)
+                seen = set()
+                for part in parts:
+                    if not part.image:
+                        continue
+                    try:
+                        image_path = part.image.path
+                    except (ValueError, NotImplementedError):
+                        continue
+                    if not os.path.exists(image_path):
+                        continue
+                    arcname = os.path.basename(part.image.name)
+                    if arcname in seen:
+                        base, ext = os.path.splitext(arcname)
+                        arcname = f"{base}_{part.pk}{ext}"
+                    seen.add(arcname)
+                    zf.write(image_path, arcname)
+            # remove the standalone json if it was accidentally created
+            if os.path.exists(self.filepath) and self.filepath != zip_path:
+                try:
+                    os.remove(self.filepath)
+                except OSError:
+                    pass
+            self.filepath = zip_path
+        else:
+            with open(self.filepath, "w", encoding="utf-8") as fh:
+                fh.write(json_content)
+
+    def _serialize_annotations(self, parts):
+        ImageAnnotation = apps.get_model("core", "ImageAnnotation")
+        TextAnnotation = apps.get_model("core", "TextAnnotation")
+
+        annotations = []
+        for part in parts:
+            for ann in ImageAnnotation.objects.filter(part=part).select_related("taxonomy").prefetch_related("components__component"):
+                annotations.append({
+                    "type": "image",
+                    "part_pk": part.pk,
+                    "taxonomy": ann.taxonomy.name if ann.taxonomy else None,
+                    "w3c": ann.as_w3c(),
+                })
+            for ann in TextAnnotation.objects.filter(part=part).select_related("taxonomy", "start_line", "end_line").prefetch_related("components__component"):
+                annotations.append({
+                    "type": "text",
+                    "part_pk": part.pk,
+                    "taxonomy": ann.taxonomy.name if ann.taxonomy else None,
+                    "w3c": ann.as_w3c(),
+                })
+        return annotations
+
+    def _serialize_comments(self, parts):
+        ImageAnnotation = apps.get_model("core", "ImageAnnotation")
+        TextAnnotation = apps.get_model("core", "TextAnnotation")
+
+        comments = []
+        for part in parts:
+            for ann in ImageAnnotation.objects.filter(part=part, comments__isnull=False).exclude(comments=[]).select_related("taxonomy"):
+                comments.append({
+                    "type": "image",
+                    "part_pk": part.pk,
+                    "taxonomy": ann.taxonomy.name if ann.taxonomy else None,
+                    "comments": ann.comments,
+                })
+            for ann in TextAnnotation.objects.filter(part=part, comments__isnull=False).exclude(comments=[]).select_related("taxonomy"):
+                comments.append({
+                    "type": "text",
+                    "part_pk": part.pk,
+                    "taxonomy": ann.taxonomy.name if ann.taxonomy else None,
+                    "comments": ann.comments,
+                })
+        return comments
 
     def _build_reading_graph(self, parts):
         graph = []

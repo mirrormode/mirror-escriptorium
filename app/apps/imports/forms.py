@@ -232,7 +232,8 @@ class ExportForm(RegionTypesFormMixin, BootstrapFormMixin, forms.Form):
     include_models = forms.BooleanField(required=False, initial=False, label=_("Include OCR models"), help_text=_("Includes the OCR models used to produce the transcriptions."))
     all_transcriptions = forms.BooleanField(required=False, initial=False, label=_("Include all transcriptions"), help_text=_("Includes all transcriptions of the document, not only the one selected."))
     include_graph = forms.BooleanField(required=False, initial=False, label=_("Include graph"), help_text=_("Includes the graph of the document with all its regions and lines."))
-
+    include_annotations = forms.BooleanField(required=False, initial=False, label=_("Include annotations"), help_text=_("Includes image and text annotations."))
+    include_comments = forms.BooleanField(required=False, initial=False, label=_("Include user comments"), help_text=_("Includes user comments on annotations."))
 
     def __init__(self, document, user, *args, **kwargs):
         self.document = document
@@ -265,6 +266,8 @@ class ExportForm(RegionTypesFormMixin, BootstrapFormMixin, forms.Form):
                               include_metadata=self.cleaned_data['include_metadata'],
                               include_models=self.cleaned_data['include_models'],
                               include_graph=self.cleaned_data['include_graph'],
+                              include_annotations=self.cleaned_data['include_annotations'],
+                              include_comments=self.cleaned_data['include_comments'],
                               all_transcriptions=self.cleaned_data['all_transcriptions'],
                               user_pk=self.user.pk,
                               report_label=_('Export %(document_name)s') % {'document_name': self.document.name})

@@ -16,57 +16,168 @@
         </template>
         <template #modal-content>
             <DropdownField
-                label="Transcription"
-                :disabled="disabled || !transcriptions"
-                :options="transcriptionOptions"
-                :on-change="handleTranscriptionChange"
-                required
-            />
-            <DropdownField
                 label="File Format"
                 :disabled="disabled"
                 :options="fileFormatOptions"
                 :on-change="handleFileFormatChange"
                 required
             />
-            <div class="escr-form-field escr-include-images-field escr-checkbox-field">
+
+            <div class="escr-form-field escr-checkbox-field escr-include-all-field">
                 <label>
                     <input
                         type="checkbox"
-                        value="include-images"
-                        :checked="includeImages === true && fileFormat !== 'text'"
-                        :disabled="fileFormat === 'text'"
-                        @change="handleIncludeImagesChange"
+                        :checked="includeAll"
+                        @change="handleIncludeAllChange"
                     >
-                    Include images
+                    Include all
                 </label>
                 <span class="escr-help-text">
-                    Will significantly increase the time to produce and download the export.
+                    Toggles all export options on. Disable to pick individually.
                 </span>
             </div>
 
-            <div class="escr-form-field escr-include-characters-field escr-checkbox-field">
-                <label>
-                    <input
-                        type="checkbox"
-                        value="include-characters"
-                        @change="handleIncludeCharactersChange"
-                    >
-                    Include Characters
-                </label>
-                <span class="escr-help-text">
-                    This data is only present for transcriptions coming from automatic recognition
-                    and is invalidated by manual edition.
-                </span>
-            </div>
+            <template v-if="!includeAll">
+                <DropdownField
+                    v-if="!allTranscriptions"
+                    label="Transcription"
+                    :disabled="disabled || !transcriptions"
+                    :options="transcriptionOptions"
+                    :on-change="handleTranscriptionChange"
+                    required
+                />
 
-            <ArrayField
-                :on-change="handleRegionTypesChange"
-                :options="regionTypesOptions"
-                class="escr-region-types"
-                help-text="Select region types to include in the export."
-                label="Region Types"
-            />
+                <div class="escr-form-field escr-checkbox-field">
+                    <label>
+                        <input
+                            type="checkbox"
+                            :checked="allTranscriptions"
+                            @change="handleAllTranscriptionsChange"
+                        >
+                        Include all transcriptions
+                    </label>
+                    <span class="escr-help-text">
+                        Includes all transcription layers, not just the selected one.
+                    </span>
+                </div>
+
+                <div class="escr-form-field escr-include-images-field escr-checkbox-field">
+                    <label>
+                        <input
+                            type="checkbox"
+                            value="include-images"
+                            :checked="includeImages === true && fileFormat !== 'text'"
+                            :disabled="fileFormat === 'text'"
+                            @change="handleIncludeImagesChange"
+                        >
+                        Include images
+                    </label>
+                    <span class="escr-help-text">
+                        Will significantly increase the time to produce and download the export.
+                        Export will be zipped when images are included.
+                    </span>
+                </div>
+
+                <div class="escr-form-field escr-include-characters-field escr-checkbox-field">
+                    <label>
+                        <input
+                            type="checkbox"
+                            :checked="includeCharacters"
+                            @change="handleIncludeCharactersChange"
+                        >
+                        Include characters
+                    </label>
+                    <span class="escr-help-text">
+                        This data is only present for transcriptions coming from automatic recognition
+                        and is invalidated by manual edition.
+                    </span>
+                </div>
+
+                <div class="escr-form-field escr-checkbox-field">
+                    <label>
+                        <input
+                            type="checkbox"
+                            :checked="includeMetadata"
+                            @change="handleIncludeMetadataChange"
+                        >
+                        Include metadata
+                    </label>
+                    <span class="escr-help-text">
+                        Includes document and part metadata.
+                    </span>
+                </div>
+
+                <div class="escr-form-field escr-checkbox-field">
+                    <label>
+                        <input
+                            type="checkbox"
+                            :checked="includeModels"
+                            @change="handleIncludeModelsChange"
+                        >
+                        Include models
+                    </label>
+                    <span class="escr-help-text">
+                        Includes the OCR models used to produce the transcriptions.
+                    </span>
+                </div>
+
+                <div class="escr-form-field escr-checkbox-field">
+                    <label>
+                        <input
+                            type="checkbox"
+                            :checked="includeAnnotations"
+                            @change="handleIncludeAnnotationsChange"
+                        >
+                        Include annotations
+                    </label>
+                </div>
+
+                <div class="escr-form-field escr-checkbox-field">
+                    <label>
+                        <input
+                            type="checkbox"
+                            :checked="includeGraph"
+                            @change="handleIncludeGraphChange"
+                        >
+                        Include graphs
+                    </label>
+                    <span class="escr-help-text">
+                        Includes the reading order graph of the document.
+                    </span>
+                </div>
+
+                <div class="escr-form-field escr-checkbox-field">
+                    <label>
+                        <input
+                            type="checkbox"
+                            :checked="includeComments"
+                            @change="handleIncludeCommentsChange"
+                        >
+                        Include user comments
+                    </label>
+                </div>
+
+                <div class="escr-region-types-header">
+                    <span class="escr-region-types-label">Region Types</span>
+                    <button
+                        type="button"
+                        class="escr-toggle-link"
+                        @click="selectAllRegionTypes"
+                    >Include all</button>
+                    <span class="escr-toggle-separator">|</span>
+                    <button
+                        type="button"
+                        class="escr-toggle-link"
+                        @click="excludeAllRegionTypes"
+                    >Exclude all</button>
+                </div>
+                <ArrayField
+                    :on-change="handleRegionTypesChange"
+                    :options="regionTypesOptions"
+                    class="escr-region-types"
+                    help-text="Select region types to include in the export."
+                />
+            </template>
         </template>
         <template #modal-actions>
             <EscrButton
@@ -166,16 +277,25 @@ export default {
         ...mapState({
             documentId: (state) => state.document.id,
             fileFormat: (state) => state.forms.export.fileFormat,
-            formRegionTypes: (state) => state.forms.export.regionTypes,
+            includeAll: (state) => state.forms.export.includeAll,
             includeImages: (state) => state.forms.export.includeImages,
             includeCharacters: (state) => state.forms.export.includeCharacters,
+            includeMetadata: (state) => state.forms.export.includeMetadata,
+            includeModels: (state) => state.forms.export.includeModels,
+            includeAnnotations: (state) => state.forms.export.includeAnnotations,
+            includeGraph: (state) => state.forms.export.includeGraph,
+            includeComments: (state) => state.forms.export.includeComments,
+            allTranscriptions: (state) => state.forms.export.allTranscriptions,
+            formRegionTypes: (state) => state.forms.export.regionTypes,
             transcriptionLayer: (state) => state.forms.export.transcription,
         }),
         /**
          * this form is invalid and cannot be submitted if it is missing layer or file format
          */
         invalid() {
-            return !this.transcriptionLayer || !this.fileFormat;
+            if (!this.fileFormat) return true;
+            if (!this.includeAll && !this.allTranscriptions && !this.transcriptionLayer) return true;
+            return false;
         },
         /**
          * collect region types options for checkbox elements
@@ -216,6 +336,11 @@ export default {
                     label: "ALTO",
                     value: "alto",
                     selected: this.fileFormat === "alto",
+                },
+                {
+                    label: "JSON",
+                    value: "json",
+                    selected: this.fileFormat === "json",
                 },
             ];
             if (this.markdownEnabled) {
@@ -262,31 +387,43 @@ export default {
             "handleCheckboxArrayInput",
             "handleGenericInput",
         ]),
+        setField(field, value) {
+            this.handleGenericInput({ form: "export", field, value });
+        },
         handleFileFormatChange(e) {
-            this.handleGenericInput({
-                form: "export", field: "fileFormat", value: e.target.value,
-            });
+            this.setField("fileFormat", e.target.value);
             if (e.target.value === "text") {
-                // if switching to text export, uncheck "include images"
-                this.handleGenericInput({ form: "export", field: "includeImages", value: false });
+                this.setField("includeImages", false);
             }
-            // store the export format choice for later use
             // eslint-disable-next-line no-undef
             userProfile.set("exportFormat", e.target.value);
         },
+        handleIncludeAllChange(e) {
+            this.setField("includeAll", e.target.checked);
+        },
+        handleAllTranscriptionsChange(e) {
+            this.setField("allTranscriptions", e.target.checked);
+        },
         handleIncludeImagesChange(e) {
-            this.handleGenericInput({
-                form: "export",
-                field: "includeImages",
-                value: e.target.checked,
-            });
+            this.setField("includeImages", e.target.checked);
         },
         handleIncludeCharactersChange(e) {
-            this.handleGenericInput({
-                form: "export",
-                field: "includeCharacters",
-                value: e.target.checked,
-            });
+            this.setField("includeCharacters", e.target.checked);
+        },
+        handleIncludeMetadataChange(e) {
+            this.setField("includeMetadata", e.target.checked);
+        },
+        handleIncludeModelsChange(e) {
+            this.setField("includeModels", e.target.checked);
+        },
+        handleIncludeAnnotationsChange(e) {
+            this.setField("includeAnnotations", e.target.checked);
+        },
+        handleIncludeGraphChange(e) {
+            this.setField("includeGraph", e.target.checked);
+        },
+        handleIncludeCommentsChange(e) {
+            this.setField("includeComments", e.target.checked);
         },
         handleRegionTypesChange(e) {
             this.handleCheckboxArrayInput({
@@ -297,9 +434,14 @@ export default {
             });
         },
         handleTranscriptionChange(e) {
-            this.handleGenericInput({
-                form: "export", field: "transcription", value: e.target.value,
-            });
+            this.setField("transcription", e.target.value);
+        },
+        selectAllRegionTypes() {
+            const allValues = this.regionTypes.map((type) => type.pk.toString());
+            this.setField("regionTypes", allValues);
+        },
+        excludeAllRegionTypes() {
+            this.setField("regionTypes", []);
         },
     },
 };

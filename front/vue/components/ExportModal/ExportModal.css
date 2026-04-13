@@ -1,4 +1,57 @@
+.escr-export-modal .escr-modal {
+    max-height: calc(100vh - 100px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    top: 50px;
+}
+
+.escr-export-modal .escr-modal-content {
+    overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.escr-export-modal .modal-actions {
+    flex: 0 0 auto;
+}
+
 .escr-export-modal .escr-checkbox-field .escr-help-text {
     margin: 8px 30px 0 10px;
     font-style: italic;
+}
+
+.escr-export-modal .escr-include-all-field {
+    margin-bottom: 4px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.escr-export-modal .escr-region-types-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.escr-export-modal .escr-region-types-label {
+    font-weight: 600;
+    margin-right: auto;
+}
+
+.escr-export-modal .escr-toggle-link {
+    background: none;
+    border: none;
+    color: #007bff;
+    cursor: pointer;
+    padding: 0;
+    font-size: 0.875rem;
+}
+
+.escr-export-modal .escr-toggle-link:hover {
+    text-decoration: underline;
+}
+
+.escr-export-modal .escr-toggle-separator {
+    color: #6c757d;
 }

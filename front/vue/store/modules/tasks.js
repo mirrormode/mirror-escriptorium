@@ -132,13 +132,21 @@ const actions = {
      * Queue the export task for a document.
      */
     async exportDocument({ rootState }, { documentId, parts }) {
+        const exportForm = rootState?.forms?.export;
+        const includeAll = exportForm?.includeAll;
         await exportDocument({
             documentId,
-            regionTypes: rootState?.forms?.export?.regionTypes,
-            fileFormat: rootState?.forms?.export?.fileFormat,
-            transcription: rootState?.forms?.export?.transcription,
-            includeImages: rootState?.forms?.export?.includeImages,
-            includeCharacters: rootState?.forms?.export?.includeCharacters,
+            regionTypes: exportForm?.regionTypes,
+            fileFormat: exportForm?.fileFormat,
+            transcription: exportForm?.transcription,
+            includeImages: includeAll || exportForm?.includeImages,
+            includeCharacters: includeAll || exportForm?.includeCharacters,
+            includeMetadata: includeAll || exportForm?.includeMetadata,
+            includeModels: includeAll || exportForm?.includeModels,
+            includeAnnotations: includeAll || exportForm?.includeAnnotations,
+            includeGraph: includeAll || exportForm?.includeGraph,
+            includeComments: includeAll || exportForm?.includeComments,
+            allTranscriptions: includeAll || exportForm?.allTranscriptions,
             parts,
         });
     },
