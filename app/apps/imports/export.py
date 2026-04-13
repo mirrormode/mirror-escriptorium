@@ -263,7 +263,7 @@ class JsonExporter(BaseExporter):
         }
 
         if self.include_characters:
-            data["graphs"] = lt.graphs
+            data["characters"] = lt.graphs
 
         return data
 
