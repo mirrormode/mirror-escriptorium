@@ -138,11 +138,29 @@ class DocumentPartType(Typology):
 
 
 class BlockType(Typology):
-    pass
+    name = models.CharField(max_length=128, unique=True)
 
 
 class LineType(Typology):
-    pass
+    name = models.CharField(max_length=128, unique=True)
+
+
+def _get_or_create_type_safe(model_cls, name):
+    """Race-safe get_or_create for Typology models with unique(name).
+
+    Under concurrent segmentation tasks, two workers may both observe that a
+    given BlockType/LineType does not exist, both call create(), and one of
+    them would fail on the unique constraint. Catching IntegrityError and
+    refetching keeps exactly one canonical row while still returning the
+    instance to the caller.
+    """
+    from django.db import IntegrityError, transaction
+    try:
+        with transaction.atomic():
+            obj, _ = model_cls.objects.get_or_create(name=name)
+            return obj
+    except IntegrityError:
+        return model_cls.objects.get(name=name)
 
 
 class Tag(models.Model):
@@ -1326,13 +1344,8 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), CascadeUpdate, Or
 
             if steps in ["regions", "both"]:
                 for region_type, regions in res.regions.items():
-                    try:
-                        typo, created = self.document.valid_block_types.get_or_create(
-                            name=region_type)
-                    except BlockType.MultipleObjectsReturned:
-                        # Note: this should not happen if the modelisation was alright
-                        # but for now we hack
-                        typo = self.document.valid_block_types.filter(name=region_type)[0]
+                    typo = _get_or_create_type_safe(BlockType, region_type)
+                    self.document.valid_block_types.add(typo)
                     for region in regions:
                         Block.objects.create(
                             document_part=self,
@@ -1357,13 +1370,8 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), CascadeUpdate, Or
                     if line.tags and "type" in line.tags and len(line.tags["type"]) > 0:
                         line_type_name = line.tags["type"][0].get("type")
 
-                    try:
-                        typo, created = self.document.valid_line_types.get_or_create(
-                            name=line_type_name)
-                    except LineType.MultipleObjectsReturned:
-                        # Note: this should not happen if the modelisation was alright
-                        # but for now we hack
-                        typo = self.document.valid_line_types.filter(name=line_type_name)[0]
+                    typo = _get_or_create_type_safe(LineType, line_type_name)
+                    self.document.valid_line_types.add(typo)
                     Line.objects.create(
                         document_part=self,
                         typology=typo,
