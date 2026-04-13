@@ -276,6 +276,9 @@ class JsonExporter(BaseExporter):
         if self.include_characters:
             data["characters"] = lt.graphs
 
+        if self.include_graph:
+            data["graphs"] = lt.graphs
+
         return data
 
     def _serialize_line(self, line):
@@ -443,9 +446,6 @@ class JsonExporter(BaseExporter):
                 for m in self.document.ocr_models.all()
             ]
 
-        if self.include_graph:
-            payload["graph"] = self._build_reading_graph(parts)
-
         if self.include_annotations:
             payload["annotations"] = self._serialize_annotations(parts)
 
@@ -529,27 +529,6 @@ class JsonExporter(BaseExporter):
                     "comments": ann.comments,
                 })
         return comments
-
-    def _build_reading_graph(self, parts):
-        graph = []
-
-        for part in parts:
-            blocks = (
-                part.blocks
-                .annotate(avglo=Avg("lines__order"))
-                .order_by("avglo", "order", "pk")
-            )
-
-            for block in blocks:
-                graph.append({
-                    "id": f"block_{block.pk}",
-                    "type": "block",
-                    "box": block.box,
-                    "typology": block.typology.name if block.typology else None,
-                })
-
-        return graph
-
 
 class OpenITIMARkdownExporter(BaseExporter):
     file_format = OPENITI_MARKDOWN_FORMAT
