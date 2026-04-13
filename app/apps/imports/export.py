@@ -258,10 +258,19 @@ class JsonExporter(BaseExporter):
             "pk": lt.pk,
             "transcription_pk": lt.transcription_id,
             "content": lt.content,
-            "text": lt.text,
             "avg_confidence": lt.avg_confidence,
             "modified_by": lt.version_author or None,
             "modified_at": lt.version_updated_at.isoformat() if lt.version_updated_at else None,
+            "history": [
+                {
+                    "content": v.get("data", {}).get("content"),
+                    "author": v.get("author"),
+                    "source": v.get("source"),
+                    "created_at": v.get("created_at"),
+                    "updated_at": v.get("updated_at"),
+                }
+                for v in (lt.versions or [])
+            ],
         }
 
         if self.include_characters:
@@ -339,7 +348,7 @@ class JsonExporter(BaseExporter):
         image_data = {
             "filename": part.filename,
             "original_filename": part.original_filename,
-            "uri": part.image.url if getattr(part, "image", None) else None,
+            "uri": part.image.url if getattr(part, "image", None) and self.include_images else None,
             "width": getattr(part.image, "width", None) if getattr(part, "image", None) else None,
             "height": getattr(part.image, "height", None) if getattr(part, "image", None) else None,
             "size": [
@@ -347,9 +356,6 @@ class JsonExporter(BaseExporter):
                 getattr(part.image, "height", None),
             ] if getattr(part, "image", None) else None,
         }
-
-        if not self.include_images:
-            image_data = None
 
         return {
             "pk": part.pk,
