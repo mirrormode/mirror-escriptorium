@@ -260,6 +260,8 @@ class JsonExporter(BaseExporter):
             "content": lt.content,
             "text": lt.text,
             "avg_confidence": lt.avg_confidence,
+            "modified_by": lt.version_author or None,
+            "modified_at": lt.version_updated_at.isoformat() if lt.version_updated_at else None,
         }
 
         if self.include_characters:
