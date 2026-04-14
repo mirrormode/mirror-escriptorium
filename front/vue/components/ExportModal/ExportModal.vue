@@ -171,11 +171,12 @@
                         @click="excludeAllRegionTypes"
                     >Exclude all</button>
                 </div>
-                <ArrayField
+                <MultiSelectField
                     :on-change="handleRegionTypesChange"
                     :options="regionTypesOptions"
                     class="escr-region-types"
                     help-text="Select region types to include in the export."
+                    placeholder="Select region types..."
                 />
             </template>
         </template>
@@ -197,7 +198,7 @@
 </template>
 <script>
 import { mapActions, mapState } from "vuex";
-import ArrayField from "../ArrayField/ArrayField.vue";
+import MultiSelectField from "../MultiSelectDropdown/MultiSelectField.vue";
 import DropdownField from "../Dropdown/DropdownField.vue";
 import EscrButton from "../Button/Button.vue";
 import EscrModal from "../Modal/Modal.vue";
@@ -208,7 +209,7 @@ import "./ExportModal.css";
 export default {
     name: "EscrExportModal",
     components: {
-        ArrayField,
+        MultiSelectField,
         DropdownField,
         EscrButton,
         EscrModal,

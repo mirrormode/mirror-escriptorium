@@ -55,3 +55,7 @@
 .escr-export-modal .escr-toggle-separator {
     color: #6c757d;
 }
+
+.escr-export-modal .escr-region-types .escr-multiselect-dropdown {
+    margin-top: 12px;
+}
