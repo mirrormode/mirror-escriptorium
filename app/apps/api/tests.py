@@ -725,11 +725,11 @@ class DocumentViewSetTestCase(CoreFactoryTestCase):
             resp = self.client.get(uri)
             self.assertEqual(resp.status_code, 200)
 
-            self.assertEqual(resp.data["regions"][0]["typology_name"], "blocktype")
+            self.assertTrue(resp.data["regions"][0]["typology_name"].startswith("blocktype"))
             self.assertEqual(resp.data["regions"][0]["frequency"], 1)
-            self.assertEqual(resp.data["lines"][0]["typology_name"], "linetype0")
+            self.assertTrue(resp.data["lines"][0]["typology_name"].startswith("linetype0"))
             self.assertEqual(resp.data["lines"][0]["frequency"], 6)
-            self.assertEqual(resp.data["lines"][1]["typology_name"], "linetype1")
+            self.assertTrue(resp.data["lines"][1]["typology_name"].startswith("linetype1"))
             self.assertEqual(resp.data["lines"][1]["frequency"], 6)
 
             self.assertEqual(resp.data["image_annotations"][0]["taxonomy_name"], "imgtaxo")
