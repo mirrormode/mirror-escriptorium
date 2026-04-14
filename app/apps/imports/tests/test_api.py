@@ -146,8 +146,8 @@ class XmlImportTestCase(CoreFactoryTestCase):
         self.assertEqual(self.part2.lines.count(), 1)
 
     def test_alto_types(self):
-        bt = BlockType.objects.create(name="test_block_type")
-        lt = LineType.objects.create(name="test_line_type")
+        bt, _ = BlockType.objects.get_or_create(name="test_block_type")
+        lt, _ = LineType.objects.get_or_create(name="test_line_type")
         self.document.valid_block_types.add(bt)
         self.document.valid_line_types.add(lt)
         uri = reverse('api:document-imports', kwargs={'pk': self.document.pk})
@@ -372,9 +372,9 @@ class XmlImportTestCase(CoreFactoryTestCase):
         non_word_block_type = "test-non-word-block-type"
         word_block_type = 'heading'
         non_word_line_type = 'test-non-word_line_type'
-        bt_head = BlockType.objects.create(name=word_block_type)
-        bt_non_word = BlockType.objects.create(name=non_word_block_type)
-        lt_non_word = LineType.objects.create(name=non_word_line_type)
+        bt_head, _ = BlockType.objects.get_or_create(name=word_block_type)
+        bt_non_word, _ = BlockType.objects.get_or_create(name=non_word_block_type)
+        lt_non_word, _ = LineType.objects.get_or_create(name=non_word_line_type)
         self.document.valid_block_types.add(bt_head)
         self.document.valid_block_types.add(bt_non_word)
         self.document.valid_line_types.add(lt_non_word)

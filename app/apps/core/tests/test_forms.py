@@ -14,7 +14,7 @@ class RegionTypesFormMixinTestCase(CoreFactoryTestCase):
 
     def make_doc_and_block(self):
         self.document = self.factory.make_document(name="document")
-        self.block_type = BlockType.objects.create(name="Block", public=True, default=True)
+        self.block_type, _ = BlockType.objects.get_or_create(name="Block", defaults={"public": True, "default": True})
         self.document.valid_block_types.add(self.block_type)
 
     def test_init(self):

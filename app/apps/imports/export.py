@@ -1,6 +1,6 @@
+import json
 import os.path
 import re
-import json
 import time
 import zipfile
 from datetime import datetime
@@ -40,16 +40,16 @@ class BaseExporter:
         region_types,
         include_images,
         include_characters,
-        include_metadata,
-        include_models,
-        include_graph,
-        include_annotations,
-        include_comments,
-        all_transcriptions,
-        user,
-        document,
-        report,
-        transcription,
+        user=None,
+        document=None,
+        report=None,
+        transcription=None,
+        include_metadata=False,
+        include_models=False,
+        include_graph=False,
+        include_annotations=False,
+        include_comments=False,
+        all_transcriptions=False,
     ):
         self.part_pks = part_pks
         self.region_types = region_types

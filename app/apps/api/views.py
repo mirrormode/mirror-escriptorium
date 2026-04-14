@@ -13,6 +13,8 @@ from django.utils.translation import gettext as _
 from django.views.decorators.cache import cache_page
 from django_filters import Filter, FilterSet
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import filters, status
 from rest_framework.authtoken.models import Token
 from rest_framework.authtoken.views import ObtainAuthToken
@@ -24,8 +26,6 @@ from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.serializers import PrimaryKeyRelatedField
 from rest_framework.viewsets import GenericViewSet, ModelViewSet, ReadOnlyModelViewSet
-from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
-from drf_spectacular.types import OpenApiTypes
 
 from api.serializers import (
     AlignSerializer,
@@ -106,9 +106,6 @@ from reporting.models import TaskGroup, TaskReport
 from users.consumers import send_event
 from users.models import Group, User
 from versioning.models import NoChangeException
-
-
-from rest_framework.viewsets import ModelViewSet
 
 nested_document_part_schema = extend_schema(
     parameters=[
@@ -919,7 +916,7 @@ class ImportViewSet(DocumentPermissionMixin, GenericViewSet, CreateModelMixin):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         context['user'] = self.request.user
-        context['document'] = self.document
+        context['document'] = Document.objects.get(pk=self.kwargs.get('document_pk'))
         return context
 
     def create(self, request, document_pk=None):
@@ -1209,7 +1206,6 @@ class ImageAnnotationViewSet(DocumentPermissionMixin, ModelViewSet):
     partial_update=nested_document_part_schema,
     destroy=nested_document_part_schema,
 )
-
 class TextAnnotationViewSet(DocumentPermissionMixin, ModelViewSet):
     queryset = TextAnnotation.objects.all()
     serializer_class = TextAnnotationSerializer

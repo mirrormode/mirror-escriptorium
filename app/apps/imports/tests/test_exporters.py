@@ -91,9 +91,9 @@ class ExportersTestCase(CoreFactoryTestCase):
             self.all_parts_pks = [self.part.pk, self.part2.pk]
             transcription = self.factory.make_transcription(document=doc)
 
-            title = BlockType.objects.create(id=1, name="title")
-            self.body = BlockType.objects.create(id=2, name="body")
-            signature = BlockType.objects.create(id=3, name="signature")
+            title, _ = BlockType.objects.get_or_create(name="title")
+            self.body, _ = BlockType.objects.get_or_create(name="body")
+            signature, _ = BlockType.objects.get_or_create(name="signature")
 
             # Creating content that will be exported
             for index, part in enumerate([self.part, self.part2]):

@@ -43,8 +43,8 @@ class DocumentTestCase(TestCase):
 
     def test_get_ontology(self):
         # Add some data to export
-        self.doc.valid_line_types.add(LineType.objects.create(name='Line'))
-        self.doc.valid_block_types.add(BlockType.objects.create(name='Block'))
+        self.doc.valid_line_types.add(LineType.objects.get_or_create(name='Line')[0])
+        self.doc.valid_block_types.add(BlockType.objects.get_or_create(name='Block')[0])
         self.doc.valid_part_types.add(DocumentPartType.objects.create(name='Part'))
 
         component_1 = AnnotationComponent.objects.create(document=self.doc, name='Component 1', allowed_values=['X', 'Y', 'Z'])

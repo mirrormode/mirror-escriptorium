@@ -1,4 +1,9 @@
 from django.urls import include, path
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularRedocView,
+    SpectacularSwaggerView,
+)
 from rest_framework_nested import routers
 
 from api.views import (
@@ -32,13 +37,6 @@ from api.views import (
     UserViewSet,
     VirtualCollectionViewSet,
 )
-
-from drf_spectacular.views import (
-    SpectacularAPIView,
-    SpectacularSwaggerView,
-    SpectacularRedocView,
-)
-
 
 router = routers.DefaultRouter()
 router.register(r'scripts', ScriptViewSet)

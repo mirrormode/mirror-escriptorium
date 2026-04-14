@@ -927,7 +927,7 @@ class LineViewSetTestCase(CoreFactoryTestCase):
         self.block = Block.objects.create(
             box=[[10, 10], [10, 200], [200, 200], [200, 10]],
             document_part=self.part)
-        self.line_type = LineType.objects.create(name='linetype')
+        self.line_type, _ = LineType.objects.get_or_create(name='linetype')
         self.line = Line.objects.create(
             baseline=[[0, 0], [10, 10], [20, 20]],
             document_part=self.part,
