@@ -173,7 +173,8 @@ class CoreFactory():
 
         if transcription is None:
             transcription = self.make_transcription(document=part.document)
-        block_type, _ = BlockType.objects.get_or_create(name="blocktype", defaults={"public": True, "default": True})
+        block_type_name = f"blocktype_{uuid.uuid4().hex[:8]}"
+        block_type = BlockType.objects.create(name=block_type_name, public=True, default=True)
         part.document.valid_block_types.add(block_type)
 
         block = Block.objects.create(
@@ -187,7 +188,8 @@ class CoreFactory():
 
         line_types = []
         for i in range(5):
-            line_type, _ = LineType.objects.get_or_create(name="linetype" + str(i), defaults={"public": True, "default": True})
+            line_type_name = f"linetype{i}_{uuid.uuid4().hex[:8]}"
+            line_type = LineType.objects.create(name=line_type_name, public=True, default=True)
             part.document.valid_line_types.add(line_type)
             line_types.append(line_type)
 
