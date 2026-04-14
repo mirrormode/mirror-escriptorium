@@ -1,6 +1,6 @@
+import json
 import os.path
 import re
-import json
 import time
 import zipfile
 from datetime import datetime
@@ -529,6 +529,7 @@ class JsonExporter(BaseExporter):
                     "comments": ann.comments,
                 })
         return comments
+
 
 class OpenITIMARkdownExporter(BaseExporter):
     file_format = OPENITI_MARKDOWN_FORMAT
