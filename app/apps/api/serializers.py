@@ -1,6 +1,8 @@
 import html
 import logging
 import os.path
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import bleach
 from django.conf import settings
@@ -11,8 +13,6 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from easy_thumbnails.files import get_thumbnailer
 from rest_framework import fields, serializers
-from typing import Optional, Dict, List, Any
-from datetime import datetime
 
 from api.fields import DisplayChoiceField
 from core.models import (

@@ -15,7 +15,6 @@ import os
 import sys
 
 from django.utils.translation import gettext_lazy as _
-
 from kombu import Queue
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
@@ -442,7 +441,7 @@ REST_FRAMEWORK = {
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'eScriptorium API',
-    'DESCRIPTION':  """eScriptorium REST API
+    'DESCRIPTION': """eScriptorium REST API
 
 ### Authentication
 
