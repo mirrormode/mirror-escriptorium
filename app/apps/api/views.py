@@ -18,7 +18,6 @@ from rest_framework.authtoken.models import Token
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotAuthenticated
-from rest_framework.filters import OrderingFilter
 from rest_framework.mixins import CreateModelMixin
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import BasePermission
@@ -35,6 +34,8 @@ from api.serializers import (
     AnnotationTypeSerializer,
     BlockSerializer,
     BlockTypeSerializer,
+    CollectionRecognizeSerializer,
+    CollectionSegmentSerializer,
     DetailedGroupSerializer,
     DetailedLineSerializer,
     DocumentMetadataSerializer,
@@ -67,6 +68,8 @@ from api.serializers import (
     TranscribeSerializer,
     TranscriptionSerializer,
     UserSerializer,
+    VirtualCollectionItemSerializer,
+    VirtualCollectionSerializer,
 )
 from core.merger import MAX_MERGE_SIZE, merge_lines
 from core.models import (
@@ -94,6 +97,7 @@ from core.models import (
     TextAnnotation,
     TextualWitness,
     Transcription,
+    VirtualCollection,
 )
 from core.tasks import recalculate_masks
 from imports.forms import ExportForm, ImportForm
@@ -486,7 +490,7 @@ class DocumentViewSet(ModelViewSet):
                 continue
 
             try:
-                send_event('document', document.pk, f'{task_name}: error', {'reason': _('Canceled.')})
+                send_event('document', document.pk, f'{task_name}: error', {'reason': str(_('Canceled.'))})
             except Exception as e:
                 # don't crash on websocket error
                 logger.exception(e)
@@ -500,7 +504,7 @@ class DocumentViewSet(ModelViewSet):
                             'id': report.document_part.pk,
                             'process': task_name,
                             'status': 'error',
-                            'reason': _('Canceled.')
+                            'reason': str(_('Canceled.'))
                         } for report in reports]
                     })
             except Exception as e:
@@ -819,6 +823,13 @@ class DocumentViewSet(ModelViewSet):
             'text_annotations': text_annotations
         })
 
+    @action(detail=True)
+    def part_ids(self, request, pk=None):
+        # efficiently retrieve parts list as pks
+        obj = self.get_object()
+        ids = list(obj.parts.values_list("pk", flat=True))
+        return Response(ids)
+
 
 @extend_schema_view(
     list=nested_document_part_schema,
@@ -918,10 +929,30 @@ class ImportViewSet(DocumentPermissionMixin, GenericViewSet, CreateModelMixin):
         return Response({'status': 'ok'}, status=status.HTTP_201_CREATED)
 
 
+class PartFilterSet(FilterSet):
+    """FilterSet subclass to allow filtering on DocumentPart names/filenames"""
+
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+
+        name = self.request.GET.get("name")
+        if name:
+            queryset = queryset.filter(
+                Q(name__icontains=name) | Q(original_filename__icontains=name)
+            )
+
+        return queryset
+
+    class Meta:
+        model = DocumentPart
+        fields = []
+
+
 class PartViewSet(DocumentPermissionMixin, ModelViewSet):
-    filter_backends = (OrderingFilter,)
     queryset = DocumentPart.objects.all().select_related('document')
-    filter_backends = [filters.OrderingFilter]
+    filter_backends = [filters.OrderingFilter, DjangoFilterBackend]
+    filterset_class = PartFilterSet
+    pagination_class = LargeResultsSetPagination
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -1462,13 +1493,7 @@ class OcrModelViewSet(ModelViewSet):
     serializer_class = OcrModelSerializer
 
     def get_queryset(self):
-        return (super().get_queryset()
-                .filter(Q(owner=self.request.user)
-                        | Q(ocr_model_rights__user=self.request.user)
-                        | Q(ocr_model_rights__group__user=self.request.user)
-                        | Q(public=True))
-                .distinct()
-                )
+        return super().get_queryset().for_user_read(self.request.user)
 
     @action(detail=True, methods=['post'])
     def cancel_training(self, request, pk=None):
@@ -1493,3 +1518,71 @@ class RegenerableAuthToken(ObtainAuthToken):
             token, created = Token.objects.get_or_create(user=user)
 
         return Response({'token': token.key})
+
+
+class VirtualCollectionViewSet(ModelViewSet):
+    serializer_class = VirtualCollectionSerializer
+    pagination_class = LargeResultsSetPagination
+
+    def get_queryset(self):
+        return VirtualCollection.objects.filter(owner=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
+
+    @action(
+        detail=True, methods=["get"], pagination_class=ExtraLargeResultsSetPagination
+    )
+    def items(self, request, pk=None):
+        """
+        GET /collections/<id>/items/?page=1
+        Returns a paginated list of items for the VirtualCollection.
+        """
+        collection = self.get_object()
+        # prefetch related objects to prevent n+1 quries
+        items_qs = (
+            collection.virtualcollectionitem_set.select_related(
+                "document_part", "document_part__document"
+            )
+            .all()
+            .order_by("id")
+        )
+        page = self.paginate_queryset(items_qs)
+        if page is not None:
+            serializer = VirtualCollectionItemSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = VirtualCollectionItemSerializer(items_qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def train_recognizer(self, request, pk=None):
+        # recognition: get the collection, validate with training serializer, enqueue training task
+        collection = self.get_object()
+        serializer = CollectionRecognizeSerializer(
+            data=request.data, context={"request": request, "collection": collection}
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.process()
+        serializer.model.train_from_collection(
+            collection_pk=collection.pk,
+            task_group_pk=serializer.task_group.pk,
+            user=request.user,
+        )
+        return Response({"status": "training queued", "model_id": serializer.model.pk})
+
+    @action(detail=True, methods=["post"])
+    def train_segmenter(self, request, pk=None):
+        # segmentation: get the collection, validate with training serializer, enqueue segtraining task
+        collection = self.get_object()
+        serializer = CollectionSegmentSerializer(
+            data=request.data, context={"request": request, "collection": collection}
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.process()
+        serializer.model.segtrain_from_collection(
+            collection_pk=collection.pk,
+            task_group_pk=serializer.task_group.pk,
+            user=request.user,
+        )
+        return Response({"status": "training queued", "model_id": serializer.model.pk})
