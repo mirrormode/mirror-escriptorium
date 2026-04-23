@@ -1320,6 +1320,9 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), CascadeUpdate, Or
 
             res = segmenter.predict(im=im, config=seg_config)
 
+            if res.type == 'bbox':
+                res = res.to_baselines()
+
             if steps in ["regions", "both"]:
                 for region_type, regions in res.regions.items():
                     try:
