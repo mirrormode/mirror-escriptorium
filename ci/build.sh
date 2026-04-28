@@ -32,7 +32,7 @@ if [ "$NAME" = "app" ]; then
 
   # App image uses the root level of the container
   DOCKER_IMAGE="$CI_REGISTRY_IMAGE:$VERSION"
-  docker build . -t $DOCKER_IMAGE --build-arg VERSION_DATE=${CI_COMMIT_TAG:-$(git tag --sort=-creatordate | head -1)}
+  docker build . -t $DOCKER_IMAGE --build-arg VERSION_DATE=${CI_COMMIT_TAG:-$(git describe --tags --abbrev=0)}
 
 elif [ "$NAME" = "exim" ]; then
   DOCKER_IMAGE="$CI_REGISTRY_IMAGE/mail:$VERSION"
