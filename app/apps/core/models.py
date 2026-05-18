@@ -36,12 +36,10 @@ from easy_thumbnails.files import get_thumbnailer
 
 # isort: off
 import torch  # noqa: F401  # must be imported before kraken to avoid 'random_device could not be read'
-from kraken import blla, rpred
-# isort: on
+from kraken.configs import RecognitionInferenceConfig, SegmentationInferenceConfig
 from kraken.containers import BaselineLine, Segmentation
-from kraken.kraken import SEGMENTATION_DEFAULT_MODEL
-from kraken.lib import models as kraken_models
-from kraken.lib import vgsl
+from kraken.tasks import RecognitionTaskModel, SegmentationTaskModel
+# isort: on
 from kraken.lib.segmentation import calculate_polygonal_environment
 from ordered_model.models import OrderedModel, OrderedModelManager
 from PIL import Image
@@ -59,7 +57,9 @@ from core.tasks import (
     lossless_compression,
     segment,
     segtrain,
+    segtrain_from_collection,
     train,
+    train_from_collection,
     transcribe,
 )
 from core.utils import ColorField
@@ -617,7 +617,7 @@ class Document(ExportModelOperationsMixin("Document"), CascadeUpdate, models.Mod
         res = super().save(*args, **kwargs)
         if created:
             Transcription.objects.get_or_create(
-                document=self, name=_(Transcription.DEFAULT_NAME)
+                document=self, name=Transcription.DEFAULT_NAME
             )
             self.valid_block_types.through.objects.bulk_create(
                 [Document.valid_block_types.through(document_id=self.id, blocktype_id=type_.id)
@@ -1198,7 +1198,7 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), CascadeUpdate, Or
                                {'id': self.id,
                                 'process': report.method.split('.')[-1],
                                 'status': 'error',
-                                'reason': _('Canceled.')})
+                                'reason': str(_('Canceled.'))})
                 except Exception as e:
                     # don't crash on websocket error
                     logger.exception(e)
@@ -1298,22 +1298,18 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), CascadeUpdate, Or
         self.save()
 
         if model:
-            model_path = model.file.path
+            segmenter = SegmentationTaskModel.load_model(model.file.path)
         else:
-            model_path = SEGMENTATION_DEFAULT_MODEL
-        model_ = vgsl.TorchVGSLModel.load_model(model_path)
+            segmenter = SegmentationTaskModel.load_model()  # bundled default
 
         # TODO: check model_type [None, 'recognition', 'segmentation']
         #    &  seg_type [None, 'bbox', 'baselines']
 
         im = Image.open(self.image.file.name)
 
-        options = {
-            "device": "cpu",
-            "model": model_,
-        }
+        seg_config = SegmentationInferenceConfig(accelerator='cpu')
         if text_direction:
-            options["text_direction"] = text_direction
+            seg_config = SegmentationInferenceConfig(accelerator='cpu', text_direction=text_direction)
 
         with transaction.atomic():
             # cleanup pre-existing
@@ -1322,7 +1318,16 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), CascadeUpdate, Or
             if steps in ["regions", "both"] and override:
                 self.blocks.all().delete()
 
-            res = blla.segment(im, **options)
+            res = segmenter.predict(im=im, config=seg_config)
+
+            if res.type == 'bbox':
+                if self.document.line_offset == Document.LINE_OFFSET_TOPLINE:
+                    topline = True
+                elif self.document.line_offset == Document.LINE_OFFSET_CENTERLINE:
+                    topline = None
+                else:
+                    topline = False
+                res = res.to_baselines(topline=topline)
 
             if steps in ["regions", "both"]:
                 for region_type, regions in res.regions.items():
@@ -1379,7 +1384,7 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), CascadeUpdate, Or
         self.recalculate_ordering(read_direction=read_direction)
 
     def transcribe(self, model, transcription, text_direction=None, user=None):
-        model_ = kraken_models.load_any(model.file.path)
+        recognizer = RecognitionTaskModel.load_model(model.file.path)
 
         lines = self.lines.all()
         text_direction = (
@@ -1397,12 +1402,13 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), CascadeUpdate, Or
 
         with Image.open(self.image.file.name) as im:
             line_confidences = []
+            rec_config = RecognitionInferenceConfig(accelerator='cpu', bidi_reordering=reorder, num_line_workers=0)
             for line in lines:
                 if not line.baseline:
                     # bypass lines without baseline
                     continue
                 else:
-                    bll = BaselineLine(id='foo',
+                    bll = BaselineLine(id=str(line.pk),
                                        baseline=line.baseline,
                                        boundary=line.mask,
                                        language=None)
@@ -1413,13 +1419,7 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), CascadeUpdate, Or
                                        lines=[bll],
                                        language=None)
 
-                it = rpred.rpred(
-                    model_,
-                    im,
-                    bounds=seg,
-                    pad=16,
-                    bidi_reordering=reorder
-                )
+                it = recognizer.predict(im=im, segmentation=seg, config=rec_config)
                 lt, created = LineTranscription.objects.get_or_create(
                     line=line, transcription=transcription
                 )
@@ -1492,8 +1492,8 @@ class DocumentPart(ExportModelOperationsMixin("DocumentPart"), CascadeUpdate, Or
         if task_name == 'transcribe':
             if not self.segmented:
                 kw = kwargs.copy()
-                kw.pop('model_pk')  # we don't want to transcribe with a segmentation model
-                tasks.append(segment.si(instance_pks=[self.pk], report_label=f'Segment in {self.document.name}', **kwargs))
+                kw.pop('model_pk')  # we don't want to segment with a transcription model
+                tasks.append(segment.si(instance_pks=[self.pk], report_label=f'Segment in {self.document.name}', **kw))
             tasks.append(transcribe.si(instance_pks=[self.pk], report_label=f'Transcribe in {self.document.name}', **kwargs))
 
         if commit:
@@ -1954,12 +1954,26 @@ def models_path(instance, filename):
     return "models/%s/%s%s" % (hash, slugify(fn), ext)
 
 
+class OcrModelQuerySet(models.QuerySet):
+    """Queryset subclass for reusable user-permission filtering logic
+    on OcrModel instances"""
+    def for_user_read(self, user):
+        if not user:
+            return self.filter(public=True)
+        return self.filter(
+            Q(public=True)
+            | Q(owner=user)
+            | Q(ocr_model_rights__user=user)
+            | Q(ocr_model_rights__group__user=user)
+        ).distinct()  # prevent duplicates when model is shared with groups with multiple users
+
+
 class OcrModel(ExportModelOperationsMixin("OcrModel"), Versioned, models.Model):
     name = models.CharField(max_length=256)
     file = models.FileField(
         upload_to=models_path,
         null=True,
-        validators=[FileExtensionValidator(allowed_extensions=["mlmodel"])],
+        validators=[FileExtensionValidator(allowed_extensions=["mlmodel", "safetensors"])],
     )
     file_size = models.BigIntegerField()
 
@@ -1995,6 +2009,8 @@ class OcrModel(ExportModelOperationsMixin("OcrModel"), Versioned, models.Model):
 
     parent = models.ForeignKey("self", blank=True, null=True, on_delete=models.SET_NULL)
 
+    objects = OcrModelQuerySet.as_manager()
+
     class Meta:
         ordering = ["-version_updated_at"]
         permissions = (("can_train", "Can train models"),)
@@ -2008,7 +2024,9 @@ class OcrModel(ExportModelOperationsMixin("OcrModel"), Versioned, models.Model):
 
     def clone_for_training(self, owner, name=None):
         children_count = OcrModel.objects.filter(parent=self).count() + 2
-        name = name or self.name.split(".mlmodel")[0] + f"_v{children_count}"
+        # prefer safetensors, keep mlmodel for legacy files
+        ext = 'safetensors' if not self.file or not self.file.name.endswith('.mlmodel') else 'mlmodel'
+        name = name or self.name.rsplit('.', 1)[0] + f"_v{children_count}"
         model = OcrModel.objects.create(
             owner=owner or self.owner,
             name=name,
@@ -2019,7 +2037,7 @@ class OcrModel(ExportModelOperationsMixin("OcrModel"), Versioned, models.Model):
             versions=[],
             file_size=self.file.size,
         )
-        model.file = File(self.file, name=f'{name}.mlmodel')
+        model.file = File(self.file, name=f'{name}.{ext}')
         # Note: this copy the actual file on the file system
         model.save()
 
@@ -2047,6 +2065,22 @@ class OcrModel(ExportModelOperationsMixin("OcrModel"), Versioned, models.Model):
                     task_group_pk=task_group_pk,
                     part_pks=list(parts_qs.values_list('pk', flat=True)),
                     user_pk=user and user.pk or None)
+
+    def segtrain_from_collection(self, collection_pk, task_group_pk=None, user=None):
+        segtrain_from_collection.delay(
+            model_pk=self.pk,
+            collection_pk=collection_pk,
+            task_group_pk=task_group_pk,
+            user_pk=user.pk if user else None
+        )
+
+    def train_from_collection(self, collection_pk, task_group_pk=None, user=None):
+        train_from_collection.delay(
+            model_pk=self.pk,
+            collection_pk=collection_pk,
+            task_group_pk=task_group_pk,
+            user_pk=user.pk if user else None
+        )
 
     def cancel_training(self, revoke_task=True, username=None):
         if revoke_task:
@@ -2193,3 +2227,42 @@ class InstanceSettings(SingletonModel):
 
     def __str__(self):
         return "Instance settings"
+
+
+class VirtualCollection(models.Model):
+    """many-to-many through model for collecting a set of images
+    (DocumentParts), each associated with a transcription layer from their
+    parent document"""
+
+    name = models.CharField(max_length=512)
+    owner = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="virtual_collections"
+    )
+    parts = models.ManyToManyField(
+        DocumentPart,
+        through="VirtualCollectionItem",
+        related_name="virtual_collections",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    # default transcription layer selected per document
+    default_transcriptions = models.JSONField(default=dict, blank=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        ordering = ("name",)
+
+
+class VirtualCollectionItem(models.Model):
+    collection = models.ForeignKey(VirtualCollection, on_delete=models.CASCADE)
+    document_part = models.ForeignKey("DocumentPart", on_delete=models.CASCADE)
+    transcription_layer = models.ForeignKey("Transcription", on_delete=models.CASCADE)
+
+    class Meta:
+        # ensure a part is not added twice to the same collection
+        unique_together = ("collection", "document_part")
+
+    def __str__(self):
+        return f"{self.collection.name} - {self.document_part.name}"
