@@ -29,36 +29,145 @@
                 :on-change="handleFileFormatChange"
                 required
             />
-            <div class="escr-form-field escr-include-images-field escr-checkbox-field">
-                <label>
+            <div class="escr-form-field escr-export-mode-field">
+                <label class="escr-radio-option">
                     <input
-                        type="checkbox"
-                        value="include-images"
-                        :checked="includeImages === true && fileFormat !== 'text'"
-                        :disabled="fileFormat === 'text'"
-                        @change="handleIncludeImagesChange"
+                        type="radio"
+                        name="export-mode"
+                        value="full"
+                        :checked="mode === 'full'"
+                        @change="handleModeChange"
                     >
-                    Include images
+                    <span>
+                        <strong>Full backup</strong>
+                        <span class="escr-help-text">
+                            Export everything the exporter can produce (all optional data
+                            included). Use this when you want a complete snapshot for
+                            archival or migration.
+                        </span>
+                    </span>
                 </label>
-                <span class="escr-help-text">
-                    Will significantly increase the time to produce and download the export.
-                </span>
+                <label class="escr-radio-option">
+                    <input
+                        type="radio"
+                        name="export-mode"
+                        value="custom"
+                        :checked="mode === 'custom'"
+                        @change="handleModeChange"
+                    >
+                    <span>
+                        <strong>Custom</strong>
+                        <span class="escr-help-text">
+                            Pick which optional data to include below.
+                        </span>
+                    </span>
+                </label>
             </div>
 
-            <div class="escr-form-field escr-include-characters-field escr-checkbox-field">
-                <label>
-                    <input
-                        type="checkbox"
-                        value="include-characters"
-                        @change="handleIncludeCharactersChange"
-                    >
-                    Include Characters
-                </label>
-                <span class="escr-help-text">
-                    This data is only present for transcriptions coming from automatic recognition
-                    and is invalidated by manual edition.
-                </span>
-            </div>
+            <fieldset
+                v-if="mode === 'custom'"
+                class="escr-export-custom-options"
+            >
+                <legend>Data</legend>
+                <div class="escr-form-field escr-checkbox-field">
+                    <label>
+                        <input
+                            type="checkbox"
+                            :checked="includeCharacters"
+                            @change="handleIncludeCharactersChange"
+                        >
+                        Include character locations
+                    </label>
+                    <span class="escr-help-text">
+                        Per-character bounding boxes. Only present for transcriptions from
+                        automatic recognition; invalidated by manual edits.
+                    </span>
+                </div>
+                <div class="escr-form-field escr-checkbox-field">
+                    <label>
+                        <input
+                            type="checkbox"
+                            :checked="includeAnnotations"
+                            @change="handleGenericCheckbox('includeAnnotations', $event)"
+                        >
+                        Include annotations
+                    </label>
+                    <span class="escr-help-text">
+                        Image and text annotations attached to the document.
+                    </span>
+                </div>
+                <div class="escr-form-field escr-checkbox-field">
+                    <label>
+                        <input
+                            type="checkbox"
+                            :checked="includeComments"
+                            @change="handleGenericCheckbox('includeComments', $event)"
+                        >
+                        Include user comments
+                    </label>
+                </div>
+                <div class="escr-form-field escr-checkbox-field">
+                    <label>
+                        <input
+                            type="checkbox"
+                            :checked="includeMetadata"
+                            @change="handleGenericCheckbox('includeMetadata', $event)"
+                        >
+                        Include metadata
+                    </label>
+                    <span class="escr-help-text">
+                        Document metadata and per-part metadata.
+                    </span>
+                </div>
+                <div class="escr-form-field escr-checkbox-field">
+                    <label>
+                        <input
+                            type="checkbox"
+                            :checked="allTranscriptions"
+                            @change="handleGenericCheckbox('allTranscriptions', $event)"
+                        >
+                        Include all transcription layers
+                    </label>
+                    <span class="escr-help-text">
+                        Include every layer on the document, not only the selected one.
+                    </span>
+                </div>
+            </fieldset>
+
+            <fieldset
+                v-if="mode === 'custom'"
+                class="escr-export-custom-options"
+            >
+                <legend>Heavy binary content</legend>
+                <div class="escr-form-field escr-checkbox-field">
+                    <label>
+                        <input
+                            type="checkbox"
+                            :checked="includeImages === true && fileFormat !== 'text'"
+                            :disabled="fileFormat === 'text'"
+                            @change="handleIncludeImagesChange"
+                        >
+                        Include images
+                    </label>
+                    <span class="escr-help-text">
+                        Will significantly increase the time to produce and download the export.
+                    </span>
+                </div>
+                <div class="escr-form-field escr-checkbox-field">
+                    <label>
+                        <input
+                            type="checkbox"
+                            :checked="includeModels"
+                            @change="handleGenericCheckbox('includeModels', $event)"
+                        >
+                        Include OCR models
+                    </label>
+                    <span class="escr-help-text">
+                        Ships the OCR models used to produce the transcriptions.
+                        Adds significant size.
+                    </span>
+                </div>
+            </fieldset>
 
             <MultiSelectField
                 :on-change="handleRegionTypesChange"
@@ -168,10 +277,24 @@ export default {
             documentId: (state) => state.document.id,
             fileFormat: (state) => state.forms.export.fileFormat,
             formRegionTypes: (state) => state.forms.export.regionTypes,
+            includeAll: (state) => state.forms.export.includeAll,
             includeImages: (state) => state.forms.export.includeImages,
             includeCharacters: (state) => state.forms.export.includeCharacters,
+            includeMetadata: (state) => state.forms.export.includeMetadata,
+            includeModels: (state) => state.forms.export.includeModels,
+            includeAnnotations: (state) => state.forms.export.includeAnnotations,
+            includeComments: (state) => state.forms.export.includeComments,
+            allTranscriptions: (state) => state.forms.export.allTranscriptions,
             transcriptionLayer: (state) => state.forms.export.transcription,
         }),
+        /**
+         * "full" when the user picked the Full-Backup radio, "custom" when they
+         * revealed the checkbox pane. Mirrors the `includeAll` store field so
+         * the two are always in sync.
+         */
+        mode() {
+            return this.includeAll ? "full" : "custom";
+        },
         /**
          * this form is invalid and cannot be submitted if it is missing layer or file format
          */
@@ -237,6 +360,11 @@ export default {
         },
     },
     created() {
+        // Default to Full-Backup mode when the modal opens. The user can
+        // still uncheck to reveal the fine-grained options.
+        this.handleGenericInput({
+            form: "export", field: "includeAll", value: true,
+        });
         // initialize transcription field with user's last edited transcription
         // eslint-disable-next-line no-undef
         let itrans = userProfile.get("initialTranscriptions");
@@ -283,10 +411,31 @@ export default {
             });
         },
         handleIncludeCharactersChange(e) {
+            // "Character locations" replaces the old separate Characters + Graphs
+            // checkboxes -- Daniel Stoekl flagged them as a doublet. One UI
+            // control, both backend flags in lock-step.
+            const checked = e.target.checked;
+            this.handleGenericInput({
+                form: "export", field: "includeCharacters", value: checked,
+            });
+            this.handleGenericInput({
+                form: "export", field: "includeGraph", value: checked,
+            });
+        },
+        handleGenericCheckbox(field, e) {
+            this.handleGenericInput({
+                form: "export", field, value: e.target.checked,
+            });
+        },
+        handleModeChange(e) {
+            // Full backup = includeAll True. Custom = includeAll False (fine-
+            // grained checkboxes take over). tasks.js already OR-shortcuts
+            // includeAll || includeXxx per field, so switching to Custom does
+            // NOT flip the individual flags -- the user's last choices stay.
             this.handleGenericInput({
                 form: "export",
-                field: "includeCharacters",
-                value: e.target.checked,
+                field: "includeAll",
+                value: e.target.value === "full",
             });
         },
         handleRegionTypesChange(e) {
