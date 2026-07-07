@@ -138,7 +138,7 @@
                 v-if="mode === 'custom'"
                 class="escr-export-custom-options"
             >
-                <legend>Heavy binary content</legend>
+                <legend>Binary content</legend>
                 <div class="escr-form-field escr-checkbox-field">
                     <label>
                         <input
