@@ -196,6 +196,7 @@ class FrontendFeedback(Callback):
         self.model_directory = model_directory
         self.room_pk = room_pk
         self.room_name = room_name
+        self.best_metric = 0.0
         super().__init__(*args, **kwargs)
 
     def on_train_epoch_end(self, trainer, pl_module) -> None:
@@ -207,6 +208,8 @@ class FrontendFeedback(Callback):
             or trainer.logged_metrics.get('val_mean_iu')
             or 0.0
         )
+        if val_metric > self.best_metric:
+            self.best_metric = val_metric
         logger.info(f'Epoch {trainer.current_epoch} finished.')
         self.es_model.training_accuracy = val_metric
         relpath = os.path.relpath(self.model_directory, settings.MEDIA_ROOT)
@@ -274,12 +277,12 @@ def segtrain(model_pk=None, part_pks=[], document_pk=None, task_group_pk=None, u
     if load:
         import json
 
-        from safetensors import safe_open
+        from safetensors import SafetensorError, safe_open
         try:
             with safe_open(load, framework="pt") as f:
                 raw_meta = f.metadata()
             kraken_meta = json.loads(raw_meta.get('kraken_meta')) if raw_meta else {}
-        except (ValueError, TypeError, json.JSONDecodeError):
+        except (ValueError, TypeError, json.JSONDecodeError, SafetensorError):
             kraken_meta = {}
         if any(v.get('_model') == 'DFINEModel' for v in kraken_meta.values() if isinstance(v, dict)):
             send_event('document', document_pk, "training:error", {"id": model.pk})
@@ -358,7 +361,8 @@ def segtrain(model_pk=None, part_pks=[], document_pk=None, task_group_pk=None, u
             raise DidNotConverge
 
         try:
-            best_score_val = float(best_score) if best_score is not None else 0.0
+            fb_best = next((cb.best_metric for cb in trainer.callbacks if isinstance(cb, FrontendFeedback)), 0.0)
+            best_score_val = float(best_score) if best_score is not None else fb_best
             logger.info(f'Converting best model {best_path} (accuracy: {best_score_val}) to {model.file.path}.')
             convert_models([best_path], model.file.path)
             model.training_accuracy = best_score_val
@@ -703,7 +707,8 @@ def train_(qs, document=None, transcription=None, model=None, user=None, collect
         logger.info(f'Model {os.path.split(model.file.path)[0]} did not improve.')
         raise DidNotConverge
     else:
-        best_score_val = float(best_score) if best_score is not None else 0.0
+        fb_best = next((cb.best_metric for cb in trainer.callbacks if isinstance(cb, FrontendFeedback)), 0.0)
+        best_score_val = float(best_score) if best_score is not None else fb_best
         logger.info(f'Converting best model {best_path} (accuracy: {best_score_val}) to {model.file.path}.')
         convert_models([best_path], model.file.path)
         model.training_accuracy = best_score_val
@@ -1155,12 +1160,12 @@ def segtrain_from_collection(collection_pk=None, model_pk=None, task_group_pk=No
     if load:
         import json
 
-        from safetensors import safe_open
+        from safetensors import SafetensorError, safe_open
         try:
             with safe_open(load, framework="pt") as f:
                 raw_meta = f.metadata()
             kraken_meta = json.loads(raw_meta.get('kraken_meta')) if raw_meta else {}
-        except (ValueError, TypeError, json.JSONDecodeError):
+        except (ValueError, TypeError, json.JSONDecodeError, SafetensorError):
             kraken_meta = {}
         if any(v.get('_model') == 'DFINEModel' for v in kraken_meta.values() if isinstance(v, dict)):
             send_event("collection", collection_pk, "training:error", {"id": model.pk})
@@ -1256,7 +1261,8 @@ def segtrain_from_collection(collection_pk=None, model_pk=None, task_group_pk=No
             raise DidNotConverge
 
         try:
-            best_score_val = float(best_score) if best_score is not None else 0.0
+            fb_best = next((cb.best_metric for cb in trainer.callbacks if isinstance(cb, FrontendFeedback)), 0.0)
+            best_score_val = float(best_score) if best_score is not None else fb_best
             logger.info(f"Converting best model {best_path} (accuracy: {best_score_val}) to {model.file.path}.")
             convert_models([best_path], model.file.path)
             model.training_accuracy = best_score_val
