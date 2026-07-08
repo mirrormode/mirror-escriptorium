@@ -12,15 +12,8 @@
         >
             Could not load downloads: {{ error }}
         </p>
-        <p
-            v-else-if="!items.length"
-            class="text-muted"
-        >
-            You have no downloads yet. When you queue an Export or a
-            Download Archive, the produced file lands here.
-        </p>
         <table
-            v-else
+            v-else-if="items.length"
             class="table table-sm"
         >
             <thead>
