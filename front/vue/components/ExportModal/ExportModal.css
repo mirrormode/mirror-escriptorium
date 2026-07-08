@@ -1,121 +1,18 @@
-.escr-export-modal .escr-modal {
-    max-height: calc(100vh - 100px);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    top: 50px;
-}
-
-.escr-export-modal .escr-modal-content {
-    overflow-y: auto;
-    flex: 1 1 auto;
-    min-height: 0;
-}
-
-.escr-export-modal .modal-actions {
-    flex: 0 0 auto;
-}
-
 .escr-export-modal .escr-checkbox-field .escr-help-text {
     margin: 8px 30px 0 10px;
     font-style: italic;
-}
-
-.escr-export-modal .escr-include-all-field {
-    margin-bottom: 4px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #dee2e6;
-}
-
-.escr-export-modal .escr-region-types-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 4px;
-}
-
-.escr-export-modal .escr-region-types-label {
-    font-weight: 600;
-    margin-right: auto;
-}
-
-.escr-export-modal .escr-toggle-link {
-    background: none;
-    border: none;
-    color: #007bff;
-    cursor: pointer;
-    padding: 0;
-    font-size: 0.875rem;
-}
-
-.escr-export-modal .escr-toggle-link:hover {
-    text-decoration: underline;
-}
-
-.escr-export-modal .escr-toggle-separator {
-    color: #6c757d;
 }
 
 .escr-export-modal .escr-region-types .escr-multiselect-dropdown {
     margin-top: 12px;
 }
 
-/* Full-Backup / Custom mode picker */
-.escr-export-modal .escr-export-mode-field {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin: 12px 0 16px;
-    padding: 12px;
-    background: #f8f9fa;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
+.escr-export-modal .escr-modal {
+    max-height: calc(100vh - 200px);
+    overflow: visible;
 }
 
-.escr-export-modal .escr-radio-option {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    cursor: pointer;
-    margin: 0;
-}
-
-.escr-export-modal .escr-radio-option input[type="radio"] {
-    margin-top: 4px;
-    flex: 0 0 auto;
-}
-
-.escr-export-modal .escr-radio-option > span {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.escr-export-modal .escr-radio-option .escr-help-text {
-    margin: 0;
-    font-style: italic;
-    color: #6c757d;
-    font-size: 0.875rem;
-}
-
-/* Custom-option fieldset groups */
-.escr-export-modal .escr-export-custom-options {
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-    padding: 8px 12px 12px;
-    margin: 0 0 12px;
-}
-
-.escr-export-modal .escr-export-custom-options legend {
-    width: auto;
-    padding: 0 6px;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #495057;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-}
-
-.escr-export-modal .escr-export-custom-options .escr-checkbox-field {
-    margin: 8px 0;
+.escr-export-modal .escr-modal-content {
+    max-height: calc(100vh - 350px);
+    overflow-y: auto;
 }
