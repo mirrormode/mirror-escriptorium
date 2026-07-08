@@ -16,6 +16,7 @@ const state = () => ({
     modalOpen: {
         align: false,
         cancelWarning: false,
+        downloadArchive: false,
         export: false,
         imageCancelWarning: false,
         import: false,
