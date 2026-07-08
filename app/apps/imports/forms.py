@@ -272,7 +272,25 @@ class ExportForm(RegionTypesFormMixin, BootstrapFormMixin, forms.Form):
                               all_transcriptions=self.cleaned_data['all_transcriptions'],
                               anonymize=self.cleaned_data['anonymize'],
                               user_pk=self.user.pk,
-                              report_label=_('Export %(document_name)s') % {'document_name': self.document.name})
+                              report_label=self._report_label())
+
+    def _report_label(self):
+        # A JSON export with everything switched on + anonymize is the
+        # Download-Archive quick action; label it distinctly so users can tell
+        # a full backup apart from a regular export in the Tasks list.
+        is_full_archive = (
+            self.cleaned_data.get('file_format') == 'json'
+            and self.cleaned_data.get('anonymize')
+            and self.cleaned_data.get('all_transcriptions')
+            and self.cleaned_data.get('include_annotations')
+            and self.cleaned_data.get('include_comments')
+            and self.cleaned_data.get('include_metadata')
+            and self.cleaned_data.get('include_graph')
+            and self.cleaned_data.get('include_characters')
+        )
+        template = (_('Download Archive %(document_name)s') if is_full_archive
+                    else _('Export %(document_name)s'))
+        return template % {'document_name': self.document.name}
 
 
 class DocumentOntologyImportForm(BootstrapFormMixin, forms.Form):
