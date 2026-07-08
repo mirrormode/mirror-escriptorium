@@ -74,9 +74,6 @@ parts_router.register(r'annotations/image', ImageAnnotationViewSet)
 parts_router.register(r'annotations/text', TextAnnotationViewSet)
 parts_router.register(r'metadata', PartMetadataViewSet, basename='partmetadata')
 
-projects_router = routers.NestedSimpleRouter(router, r'projects', lookup='project')
-projects_router.register(r'tags', DocumentTagViewSet, basename='document-tag')
-
 app_name = 'api'
 urlpatterns = [
     path('', include(router.urls)),
