@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime, timezone
 
 import psutil
@@ -192,16 +193,14 @@ class Download(models.Model):
         `when` defaults to now; `salt` defaults to settings.DOWNLOAD_FINGERPRINT_SALT
         (which falls back to settings.SECRET_KEY). Returns a 64-char hex string.
         """
-        import hashlib
-        from django.conf import settings as django_settings
         if when is None:
             when = datetime.now(timezone.utc)
         if salt is None:
             salt = getattr(
-                django_settings, "DOWNLOAD_FINGERPRINT_SALT",
-                django_settings.SECRET_KEY,
+                settings, "DOWNLOAD_FINGERPRINT_SALT",
+                settings.SECRET_KEY,
             )
-        payload = f"{user_id}:{when.isoformat()}:{salt}".encode("utf-8")
+        payload = ("%s:%s:%s" % (user_id, when.isoformat(), salt)).encode("utf-8")
         return hashlib.sha256(payload).hexdigest()
 
     def is_expired(self):

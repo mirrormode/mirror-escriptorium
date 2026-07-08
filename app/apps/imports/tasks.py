@@ -28,6 +28,7 @@ def _register_download(user, report, filepath, label):
     from datetime import timedelta
 
     from django.utils import timezone as django_timezone
+
     from reporting.models import Download
 
     try:

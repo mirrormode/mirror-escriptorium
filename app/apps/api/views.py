@@ -1,13 +1,15 @@
 import json
 import logging
+import os
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.db import connection, transaction
 from django.db.models import Count, F, Prefetch, Q
-from django.http import HttpResponseRedirect
+from django.http import FileResponse, Http404, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext as _
 from django.views.decorators.cache import cache_page
@@ -44,6 +46,7 @@ from api.serializers import (
     DocumentSerializer,
     DocumentTagSerializer,
     DocumentTasksSerializer,
+    DownloadSerializer,
     ImageAnnotationSerializer,
     ImportSerializer,
     LineOrderSerializer,
@@ -102,7 +105,7 @@ from core.models import (
 from core.tasks import recalculate_masks
 from imports.forms import ExportForm, ImportForm
 from imports.parsers import ParseError
-from reporting.models import TaskGroup, TaskReport
+from reporting.models import Download, TaskGroup, TaskReport
 from users.consumers import send_event
 from users.models import Group, User
 from versioning.models import NoChangeException
@@ -865,44 +868,36 @@ class DownloadViewSet(viewsets.ReadOnlyModelViewSet):
     Lookup is by opaque fingerprint (not by DB pk) so URLs stay
     non-enumerable. Only the owning user can see their downloads.
     """
-    from reporting.models import Download as _Download
-    from api.serializers import DownloadSerializer as _DownloadSerializer
-
-    queryset = _Download.objects.all()
-    serializer_class = _DownloadSerializer
+    queryset = Download.objects.all()
+    serializer_class = DownloadSerializer
     lookup_field = 'fingerprint'
+    # Allow DELETE without registering it as a ModelViewSet action
+    http_method_names = ['get', 'delete', 'head', 'options']
 
     def get_queryset(self):
         return super().get_queryset().filter(user=self.request.user)
 
     def destroy(self, request, *args, **kwargs):
         """User-initiated deletion: remove the row and try to unlink the file."""
-        from rest_framework import status as drf_status
-        import os as _os
-
         obj = self.get_object()
         path = obj.file_path
         obj.delete()
-        if path and _os.path.exists(path):
+        if path and os.path.exists(path):
             try:
-                _os.remove(path)
+                os.remove(path)
             except OSError:
                 pass
-        return Response(status=drf_status.HTTP_204_NO_CONTENT)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['get'], url_path='file')
     def file(self, request, fingerprint=None):
         """Stream the archive file. Bumps accessed_at + accessed_count."""
-        from django.http import FileResponse, Http404
-        from django.utils import timezone as _timezone
-        import os as _os
-
         obj = self.get_object()
         if obj.is_expired():
             raise Http404("download expired")
-        if not _os.path.exists(obj.file_path):
+        if not os.path.exists(obj.file_path):
             raise Http404("file missing on disk")
-        obj.accessed_at = _timezone.now()
+        obj.accessed_at = timezone.now()
         obj.accessed_count = (obj.accessed_count or 0) + 1
         obj.save(update_fields=['accessed_at', 'accessed_count'])
         response = FileResponse(
@@ -910,12 +905,9 @@ class DownloadViewSet(viewsets.ReadOnlyModelViewSet):
             content_type=obj.mime_type or 'application/octet-stream',
         )
         response['Content-Disposition'] = (
-            f'attachment; filename="{_os.path.basename(obj.file_path)}"'
+            'attachment; filename="%s"' % os.path.basename(obj.file_path)
         )
         return response
-
-    # Allow DELETE without registering it as a ModelViewSet action
-    http_method_names = ['get', 'delete', 'head', 'options']
 
 
 class DocumentPermissionMixin():
