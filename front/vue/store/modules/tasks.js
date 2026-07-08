@@ -151,7 +151,7 @@ const actions = {
      * exporter itself.
      */
     async downloadArchive({ rootState }, { documentId, parts }) {
-        const includeImages = !!rootState?.forms?.downloadArchive?.includeImages;
+        const form = rootState?.forms?.downloadArchive || {};
         await exportDocument({
             documentId,
             regionTypes: rootState?.document?.regionTypes?.map(
@@ -161,7 +161,7 @@ const actions = {
             // Any transcription layer works here; allTranscriptions=True forces
             // every layer into the archive so this pick is nominal.
             transcription: rootState?.document?.transcriptions?.[0]?.pk || "",
-            includeImages,
+            includeImages: !!form.includeImages,
             includeCharacters: true,
             includeMetadata: true,
             includeModels: false,
@@ -170,6 +170,7 @@ const actions = {
             includeComments: true,
             allTranscriptions: true,
             anonymize: true,
+            archiveFormat: form.archiveFormat || "zip",
             parts,
         });
     },

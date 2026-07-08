@@ -19,6 +19,24 @@
                 user comments, character locations, and versioning history.
                 OCR models are not included. User identifiers are anonymized.
             </p>
+            <div class="escr-form-field">
+                <label>Archive format</label>
+                <select
+                    :value="archiveFormat"
+                    @change="handleArchiveFormatChange"
+                >
+                    <option value="zip">
+                        ZIP (.zip)
+                    </option>
+                    <option value="tar.gz">
+                        Gzipped Tar (.tar.gz)
+                    </option>
+                </select>
+                <span class="escr-help-text">
+                    ZIP works everywhere; tar.gz is smaller and standard
+                    on Unix.
+                </span>
+            </div>
             <div class="escr-form-field escr-checkbox-field">
                 <label>
                     <input
@@ -72,6 +90,7 @@ export default {
     },
     computed: {
         ...mapState({
+            archiveFormat: (state) => state.forms.downloadArchive.archiveFormat,
             includeImages: (state) => state.forms.downloadArchive.includeImages,
         }),
         scopeNoun() {
@@ -87,6 +106,13 @@ export default {
                 form: "downloadArchive",
                 field: "includeImages",
                 value: e.target.checked,
+            });
+        },
+        handleArchiveFormatChange(e) {
+            this.handleGenericInput({
+                form: "downloadArchive",
+                field: "archiveFormat",
+                value: e.target.value,
             });
         },
     },

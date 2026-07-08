@@ -339,6 +339,7 @@ export const exportDocument = async ({
     includeComments,
     allTranscriptions,
     anonymize,
+    archiveFormat,
     regionTypes,
     transcription,
     parts,
@@ -355,6 +356,7 @@ export const exportDocument = async ({
         include_comments: includeComments,
         all_transcriptions: allTranscriptions,
         anonymize,
+        archive_format: archiveFormat,
         transcription,
         parts,
     });

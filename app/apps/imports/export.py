@@ -2,6 +2,8 @@ import json
 import os.path
 import re
 import time
+import io
+import tarfile
 import zipfile
 from datetime import datetime
 
@@ -51,6 +53,7 @@ class BaseExporter:
         include_comments=False,
         all_transcriptions=False,
         anonymize=False,
+        archive_format="zip",
     ):
         self.part_pks = part_pks
         self.region_types = region_types
@@ -69,6 +72,9 @@ class BaseExporter:
         # When True, JsonExporter (and any future format-specific exporter)
         # replaces user identifiers with opaque tokens instead of usernames.
         self.anonymize = anonymize
+        # Container format for the packaged archive (JSON exporter only).
+        # Accepted values: "zip" (default), "tar.gz".
+        self.archive_format = archive_format if archive_format in ("zip", "tar.gz") else "zip"
 
         self.prepare_for_rendering()
 
@@ -470,37 +476,69 @@ class JsonExporter(BaseExporter):
 
         json_content = json.dumps(payload, ensure_ascii=False, indent=2)
 
+        # Collect (arcname, absolute-path-or-None-for-json) entries.
+        # The JSON payload is always the first entry; images (when requested)
+        # follow with a dedup pass for duplicate basenames.
+        json_arcname = os.path.basename(self.filepath)
+        entries = [(json_arcname, None)]  # None => write json_content in-memory
         if self.include_images:
-            zip_path = self.filepath.rsplit(".", 1)[0] + ".zip"
-            json_arcname = os.path.basename(self.filepath)
-            with EsZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                zf.writestr(json_arcname, json_content)
-                seen = set()
-                for part in parts:
-                    if not part.image:
-                        continue
-                    try:
-                        image_path = part.image.path
-                    except (ValueError, NotImplementedError):
-                        continue
-                    if not os.path.exists(image_path):
-                        continue
-                    arcname = os.path.basename(part.image.name)
-                    if arcname in seen:
-                        base, ext = os.path.splitext(arcname)
-                        arcname = f"{base}_{part.pk}{ext}"
-                    seen.add(arcname)
-                    zf.write(image_path, arcname)
-            # remove the standalone json if it was accidentally created
-            if os.path.exists(self.filepath) and self.filepath != zip_path:
+            seen = set()
+            for part in parts:
+                if not part.image:
+                    continue
                 try:
-                    os.remove(self.filepath)
-                except OSError:
-                    pass
-            self.filepath = zip_path
+                    image_path = part.image.path
+                except (ValueError, NotImplementedError):
+                    continue
+                if not os.path.exists(image_path):
+                    continue
+                arcname = os.path.basename(part.image.name)
+                if arcname in seen:
+                    base, ext = os.path.splitext(arcname)
+                    arcname = f"{base}_{part.pk}{ext}"
+                seen.add(arcname)
+                entries.append((arcname, image_path))
+
+        archive_path = self._build_archive(entries, json_content)
+
+        # Clean up the standalone json placeholder if it lingered.
+        if os.path.exists(self.filepath) and self.filepath != archive_path:
+            try:
+                os.remove(self.filepath)
+            except OSError:
+                pass
+        self.filepath = archive_path
+
+    def _build_archive(self, entries, json_content):
+        """Pack entries into the container format the user picked.
+
+        `entries` is a list of (arcname, path). When `path` is None the
+        entry's content is `json_content` (written in-memory).
+        Returns the on-disk archive path (self.filepath with a rewritten
+        extension: .zip or .tar.gz).
+        """
+        base_path = self.filepath.rsplit(".", 1)[0]
+        if self.archive_format == "tar.gz":
+            archive_path = base_path + ".tar.gz"
+            with tarfile.open(archive_path, "w:gz") as tf:
+                for arcname, path in entries:
+                    if path is None:
+                        data = json_content.encode("utf-8")
+                        info = tarfile.TarInfo(name=arcname)
+                        info.size = len(data)
+                        info.mode = 0o644
+                        tf.addfile(info, io.BytesIO(data))
+                    else:
+                        tf.add(path, arcname=arcname)
         else:
-            with open(self.filepath, "w", encoding="utf-8") as fh:
-                fh.write(json_content)
+            archive_path = base_path + ".zip"
+            with EsZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                for arcname, path in entries:
+                    if path is None:
+                        zf.writestr(arcname, json_content)
+                    else:
+                        zf.write(path, arcname)
+        return archive_path
 
     def _serialize_annotations(self, parts):
         ImageAnnotation = apps.get_model("core", "ImageAnnotation")

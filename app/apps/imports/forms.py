@@ -235,6 +235,12 @@ class ExportForm(RegionTypesFormMixin, BootstrapFormMixin, forms.Form):
     include_annotations = forms.BooleanField(required=False, initial=False, label=_("Include annotations"), help_text=_("Includes image and text annotations."))
     include_comments = forms.BooleanField(required=False, initial=False, label=_("Include user comments"), help_text=_("Includes user comments on annotations."))
     anonymize = forms.BooleanField(required=False, initial=False, label=_("Anonymize users"), help_text=_("Replaces user identifiers in the export with opaque tokens."))
+    archive_format = forms.ChoiceField(
+        choices=(('zip', 'ZIP'), ('tar.gz', 'Gzipped tar')),
+        initial='zip', required=False,
+        label=_("Archive format"),
+        help_text=_("Container format for the downloaded archive. Only applies to the JSON exporter."),
+    )
 
     def __init__(self, document, user, *args, **kwargs):
         self.document = document
@@ -271,6 +277,7 @@ class ExportForm(RegionTypesFormMixin, BootstrapFormMixin, forms.Form):
                               include_comments=self.cleaned_data['include_comments'],
                               all_transcriptions=self.cleaned_data['all_transcriptions'],
                               anonymize=self.cleaned_data['anonymize'],
+                              archive_format=self.cleaned_data.get('archive_format') or 'zip',
                               user_pk=self.user.pk,
                               report_label=self._report_label())
 
