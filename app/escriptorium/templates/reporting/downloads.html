@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% load i18n static %}
+
+{% block head_title %}{% trans "Downloads" %}{% endblock %}
+
+{% block body %}
+<h1>{% trans "Downloads" %}</h1>
+<p class="text-muted">
+    {% blocktrans %}
+    Every file the platform produces for you (exports, archives, ...)
+    is listed here. Files expire automatically after your configured
+    retention period (Profile → Download retention).
+    {% endblocktrans %}
+</p>
+<div id="vue-downloads"></div>
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+<script src="{% static 'downloads.js' %}"></script>
+{% endblock %}

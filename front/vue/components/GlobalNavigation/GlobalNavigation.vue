@@ -147,6 +147,11 @@
                                 <span>Change Password</span>
                             </a>
                         </li>
+                        <li>
+                            <a href="/downloads/">
+                                <span>Downloads</span>
+                            </a>
+                        </li>
                         <li v-if="canInvite">
                             <a href="/invite/">
                                 <span>Invite Users</span>
