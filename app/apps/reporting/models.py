@@ -153,3 +153,63 @@ class TaskReport(models.Model):
 
 
 TASK_FINAL_STATES = [TaskReport.WORKFLOW_STATE_ERROR, TaskReport.WORKFLOW_STATE_DONE, TaskReport.WORKFLOW_STATE_CANCELED]
+
+
+class Download(models.Model):
+    """A downloadable artifact produced by a task (export, archive, ...).
+
+    One row per generated file. The `fingerprint` is an opaque token safe
+    to share in URLs; it is generated at creation time from
+    (user_id, timestamp, secret salt) and stays stable for the row's
+    lifetime. `expires_at` is set from the owning user's retention
+    preference and drives the cleanup command.
+    """
+    fingerprint = models.CharField(max_length=64, unique=True, db_index=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="downloads")
+    task_report = models.ForeignKey(
+        TaskReport, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="downloads",
+    )
+    label = models.CharField(max_length=256)
+    file_path = models.CharField(max_length=1024)
+    file_size = models.BigIntegerField(default=0)
+    mime_type = models.CharField(max_length=128, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    accessed_at = models.DateTimeField(null=True, blank=True)
+    accessed_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.label} ({self.fingerprint[:8]})"
+
+    @staticmethod
+    def make_fingerprint(user_id, when=None, salt=None):
+        """Generate an opaque fingerprint from (user_id, timestamp, salt).
+
+        `when` defaults to now; `salt` defaults to settings.DOWNLOAD_FINGERPRINT_SALT
+        (which falls back to settings.SECRET_KEY). Returns a 64-char hex string.
+        """
+        import hashlib
+        from django.conf import settings as django_settings
+        if when is None:
+            when = datetime.now(timezone.utc)
+        if salt is None:
+            salt = getattr(
+                django_settings, "DOWNLOAD_FINGERPRINT_SALT",
+                django_settings.SECRET_KEY,
+            )
+        payload = f"{user_id}:{when.isoformat()}:{salt}".encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()
+
+    def is_expired(self):
+        if self.expires_at is None:
+            return False
+        return datetime.now(timezone.utc) >= self.expires_at
+
+    def touch_access(self):
+        """Record a download hit; caller is responsible for saving."""
+        self.accessed_at = datetime.now(timezone.utc)
+        self.accessed_count += 1

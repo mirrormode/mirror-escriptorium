@@ -15,7 +15,7 @@ from django_filters import Filter, FilterSet
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-from rest_framework import filters, status
+from rest_framework import filters, status, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.decorators import action
@@ -857,6 +857,65 @@ class TaskReportViewSet(ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset().filter(user=self.request.user)
         return qs
+
+
+class DownloadViewSet(viewsets.ReadOnlyModelViewSet):
+    """List / retrieve / delete / stream the current user's Downloads.
+
+    Lookup is by opaque fingerprint (not by DB pk) so URLs stay
+    non-enumerable. Only the owning user can see their downloads.
+    """
+    from reporting.models import Download as _Download
+    from api.serializers import DownloadSerializer as _DownloadSerializer
+
+    queryset = _Download.objects.all()
+    serializer_class = _DownloadSerializer
+    lookup_field = 'fingerprint'
+
+    def get_queryset(self):
+        return super().get_queryset().filter(user=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        """User-initiated deletion: remove the row and try to unlink the file."""
+        from rest_framework import status as drf_status
+        import os as _os
+
+        obj = self.get_object()
+        path = obj.file_path
+        obj.delete()
+        if path and _os.path.exists(path):
+            try:
+                _os.remove(path)
+            except OSError:
+                pass
+        return Response(status=drf_status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['get'], url_path='file')
+    def file(self, request, fingerprint=None):
+        """Stream the archive file. Bumps accessed_at + accessed_count."""
+        from django.http import FileResponse, Http404
+        from django.utils import timezone as _timezone
+        import os as _os
+
+        obj = self.get_object()
+        if obj.is_expired():
+            raise Http404("download expired")
+        if not _os.path.exists(obj.file_path):
+            raise Http404("file missing on disk")
+        obj.accessed_at = _timezone.now()
+        obj.accessed_count = (obj.accessed_count or 0) + 1
+        obj.save(update_fields=['accessed_at', 'accessed_count'])
+        response = FileResponse(
+            open(obj.file_path, 'rb'),
+            content_type=obj.mime_type or 'application/octet-stream',
+        )
+        response['Content-Disposition'] = (
+            f'attachment; filename="{_os.path.basename(obj.file_path)}"'
+        )
+        return response
+
+    # Allow DELETE without registering it as a ModelViewSet action
+    http_method_names = ['get', 'delete', 'head', 'options']
 
 
 class DocumentPermissionMixin():

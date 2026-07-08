@@ -17,6 +17,7 @@ from api.views import (
     DocumentTagViewSet,
     DocumentTranscriptionViewSet,
     DocumentViewSet,
+    DownloadViewSet,
     GroupViewSet,
     ImageAnnotationViewSet,
     ImportViewSet,
@@ -53,6 +54,7 @@ router.register(r'types/line', LineTypeViewSet)
 router.register(r'types/annotations', AnnotationTypeViewSet)
 router.register(r'types/part', DocumentPartTypeViewSet)
 router.register(r'collections', VirtualCollectionViewSet, basename='virtualcollection')
+router.register(r'downloads', DownloadViewSet, basename='download')
 
 projects_router = routers.NestedSimpleRouter(router, r'projects', lookup='project')
 projects_router.register(r'tags', DocumentTagViewSet, basename='document-tag')
