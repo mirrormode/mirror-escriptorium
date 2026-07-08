@@ -75,6 +75,9 @@ export default {
         overwrite: false,
         uploadFile: "",
     },
+    downloadArchive: {
+        includeImages: false,
+    },
     moveImages: {
         index: "",
         location: "before",

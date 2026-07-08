@@ -489,6 +489,17 @@
                     :on-submit="handleSubmitExport"
                     :scope="selectedParts.length === 1 ? 'Image' : `${selectedParts.length} Images`"
                 />
+                <!-- download archive images modal -->
+                <DownloadArchiveModal
+                    v-if="taskModalOpen && taskModalOpen.downloadArchive"
+                    :disabled="loading && (loading.images || loading.document)"
+                    :on-cancel="() => {
+                        closeTaskModal('downloadArchive');
+                        if (selectedParts.length === 1) setSelectedParts([]);
+                    }"
+                    :on-submit="handleSubmitDownloadArchive"
+                    :scope="selectedParts.length === 1 ? 'Image' : `${selectedParts.length} Images`"
+                />
                 <!-- redraw masks modal -->
                 <ConfirmModal
                     v-if="redrawModalOpen"
@@ -531,6 +542,7 @@ import EscrLoader from "../../components/Loader/Loader.vue";
 import EscrPage from "../Page/Page.vue";
 import EscrTable from "../../components/Table/Table.vue";
 import ExportIcon from "../../components/Icons/ExportIcon/ExportIcon.vue";
+import DownloadArchiveModal from "../../components/DownloadArchiveModal/DownloadArchiveModal.vue";
 import ExportModal from "../../components/ExportModal/ExportModal.vue";
 import GridIcon from "../../components/Icons/GridIcon/GridIcon.vue";
 import HiddenImagesIndicator from "./HiddenImagesIndicator.vue";
@@ -571,6 +583,7 @@ export default {
         AlignIcon,
         AlignModal,
         ConfirmModal,
+        DownloadArchiveModal,
         EscrButton,
         EscrLoader,
         EscrPage,
@@ -933,6 +946,7 @@ export default {
             "fetchNextPage",
             "fetchParts",
             "handleSubmitAlign",
+            "handleSubmitDownloadArchive",
             "handleSubmitExport",
             "handleSubmitRedrawMasks",
             "handleSubmitSegmentation",

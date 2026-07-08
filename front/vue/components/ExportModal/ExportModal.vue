@@ -341,11 +341,6 @@ export default {
                     value: "alto",
                     selected: this.fileFormat === "alto",
                 },
-                {
-                    label: "JSON",
-                    value: "json",
-                    selected: this.fileFormat === "json",
-                },
             ];
             if (this.markdownEnabled) {
                 formatOptions.push({

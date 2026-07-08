@@ -50,6 +50,7 @@ class BaseExporter:
         include_annotations=False,
         include_comments=False,
         all_transcriptions=False,
+        anonymize=False,
     ):
         self.part_pks = part_pks
         self.region_types = region_types
@@ -65,6 +66,9 @@ class BaseExporter:
         self.include_annotations = include_annotations
         self.include_comments = include_comments
         self.all_transcriptions = all_transcriptions
+        # When True, JsonExporter (and any future format-specific exporter)
+        # replaces user identifiers with opaque tokens instead of usernames.
+        self.anonymize = anonymize
 
         self.prepare_for_rendering()
 
@@ -217,6 +221,18 @@ class JsonExporter(BaseExporter):
     file_format = JSON_FORMAT
     file_extension = "json"
 
+    def _anonymize_user(self, username):
+        """When self.anonymize is True, replace a username with a stable
+        opaque token; otherwise return the username unchanged. The token is
+        deterministic per (document, username) pair so re-imports keep the
+        cross-record identity but a name never leaves the export.
+        """
+        if not username or not self.anonymize:
+            return username
+        import hashlib
+        key = f"{self.document.pk}:{username}".encode("utf-8")
+        return "user_" + hashlib.sha256(key).hexdigest()[:12]
+
     def _serialize_document_metadata(self):
         return [
             {
@@ -259,12 +275,12 @@ class JsonExporter(BaseExporter):
             "transcription_pk": lt.transcription_id,
             "content": lt.content,
             "avg_confidence": lt.avg_confidence,
-            "modified_by": lt.version_author or None,
+            "modified_by": self._anonymize_user(lt.version_author) or None,
             "modified_at": lt.version_updated_at.isoformat() if lt.version_updated_at else None,
             "history": [
                 {
                     "content": v.get("data", {}).get("content"),
-                    "author": v.get("author"),
+                    "author": self._anonymize_user(v.get("author")),
                     "source": v.get("source"),
                     "created_at": v.get("created_at"),
                     "updated_at": v.get("updated_at"),

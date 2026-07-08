@@ -338,6 +338,7 @@ export const exportDocument = async ({
     includeGraph,
     includeComments,
     allTranscriptions,
+    anonymize,
     regionTypes,
     transcription,
     parts,
@@ -353,6 +354,7 @@ export const exportDocument = async ({
         include_graph: includeGraph,
         include_comments: includeComments,
         all_transcriptions: allTranscriptions,
+        anonymize,
         transcription,
         parts,
     });

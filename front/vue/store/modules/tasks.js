@@ -144,6 +144,35 @@ const actions = {
         }
     },
     /**
+     * "Download Archive" quick action -- a full JSON export with almost every
+     * option forced on. The user only picks whether to include the raw image
+     * files. OCR models stay out; user identifiers are anonymized in the
+     * exporter itself.
+     */
+    async downloadArchive({ rootState }, { documentId, parts }) {
+        const includeImages = !!rootState?.forms?.downloadArchive?.includeImages;
+        await exportDocument({
+            documentId,
+            regionTypes: rootState?.document?.regionTypes?.map(
+                (rt) => rt.pk.toString(),
+            ) || [],
+            fileFormat: "json",
+            // Any transcription layer works here; allTranscriptions=True forces
+            // every layer into the archive so this pick is nominal.
+            transcription: rootState?.document?.transcriptions?.[0]?.pk || "",
+            includeImages,
+            includeCharacters: true,
+            includeMetadata: true,
+            includeModels: false,
+            includeAnnotations: true,
+            includeGraph: true,
+            includeComments: true,
+            allTranscriptions: true,
+            anonymize: true,
+            parts,
+        });
+    },
+    /**
      * Queue the export task for a document.
      */
     async exportDocument({ rootState }, { documentId, parts }) {

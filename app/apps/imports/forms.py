@@ -234,6 +234,7 @@ class ExportForm(RegionTypesFormMixin, BootstrapFormMixin, forms.Form):
     include_graph = forms.BooleanField(required=False, initial=False, label=_("Include graph"), help_text=_("Includes the graph of the document with all its regions and lines."))
     include_annotations = forms.BooleanField(required=False, initial=False, label=_("Include annotations"), help_text=_("Includes image and text annotations."))
     include_comments = forms.BooleanField(required=False, initial=False, label=_("Include user comments"), help_text=_("Includes user comments on annotations."))
+    anonymize = forms.BooleanField(required=False, initial=False, label=_("Anonymize users"), help_text=_("Replaces user identifiers in the export with opaque tokens."))
 
     def __init__(self, document, user, *args, **kwargs):
         self.document = document
@@ -269,6 +270,7 @@ class ExportForm(RegionTypesFormMixin, BootstrapFormMixin, forms.Form):
                               include_annotations=self.cleaned_data['include_annotations'],
                               include_comments=self.cleaned_data['include_comments'],
                               all_transcriptions=self.cleaned_data['all_transcriptions'],
+                              anonymize=self.cleaned_data['anonymize'],
                               user_pk=self.user.pk,
                               report_label=_('Export %(document_name)s') % {'document_name': self.document.name})
 
