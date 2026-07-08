@@ -1,9 +1,10 @@
+import hashlib
+import io
 import json
 import os.path
 import re
-import time
-import io
 import tarfile
+import time
 import zipfile
 from datetime import datetime
 
@@ -235,8 +236,7 @@ class JsonExporter(BaseExporter):
         """
         if not username or not self.anonymize:
             return username
-        import hashlib
-        key = f"{self.document.pk}:{username}".encode("utf-8")
+        key = ("%s:%s" % (self.document.pk, username)).encode("utf-8")
         return "user_" + hashlib.sha256(key).hexdigest()[:12]
 
     def _serialize_document_metadata(self):
