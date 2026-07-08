@@ -77,7 +77,7 @@ export default {
     },
     downloadArchive: {
         archiveFormat: "zip",
-        includeImages: false,
+        includeImages: true,
     },
     moveImages: {
         index: "",
