@@ -14,10 +14,8 @@
         </template>
         <template #modal-content>
             <p class="escr-archive-intro">
-                Ships everything about this {{ scopeNoun }} as a full JSON
-                archive: metadata, transcriptions (all layers), annotations,
-                user comments, character locations, and versioning history.
-                OCR models are not included. User identifiers are anonymized.
+                Exports {{ scopeNoun }} as a full JSON
+                archive.
             </p>
             <div class="escr-form-field">
                 <label>Archive format</label>
@@ -32,10 +30,6 @@
                         Gzipped Tar (.tar.gz)
                     </option>
                 </select>
-                <span class="escr-help-text">
-                    ZIP works everywhere; tar.gz is smaller and standard
-                    on Unix.
-                </span>
             </div>
             <div class="escr-form-field escr-checkbox-field">
                 <label>
@@ -46,10 +40,6 @@
                     >
                     Include images
                 </label>
-                <span class="escr-help-text">
-                    Bundles the raw image files. Significantly increases
-                    archive size and processing time.
-                </span>
             </div>
         </template>
         <template #modal-actions>
