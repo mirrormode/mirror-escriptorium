@@ -16,6 +16,22 @@ def get_room_name(cls, pk):
     return "room-%s-%d" % (cls, pk)
 
 
+def can_join_room(user, cls, pk):
+    """Rooms broadcast per-object activity, so joining one is a read on that
+    object. 'document' is the only class send_event is ever called with on
+    this branch - there are no collections here."""
+    from core.models import Document
+
+    try:
+        pk = int(pk)
+    except (TypeError, ValueError):
+        return False
+
+    if cls == 'document':
+        return Document.objects.for_user(user).filter(pk=pk).exists()
+    return False
+
+
 def send_event(cls, pk, event_name, data):
     channel_layer = get_channel_layer()
     try:
@@ -47,6 +63,7 @@ def send_notification(user_pk, message, id=None, level='info', links=None):
 class NotificationConsumer(WebsocketConsumer):
     def connect(self):
         self.room = None
+        self.rooms = set()
         if self.scope['user'].is_authenticated:
             async_to_sync(self.channel_layer.group_add)(
                 get_group_name(self.scope['user'].pk),
@@ -58,9 +75,9 @@ class NotificationConsumer(WebsocketConsumer):
             async_to_sync(self.channel_layer.group_discard)(
                 get_group_name(self.scope['user'].pk),
                 self.channel_name)
-            if self.room:
+            for room in self.rooms:
                 async_to_sync(self.channel_layer.group_discard)(
-                    self.room,
+                    room,
                     self.channel_name)
 
     def receive(self, text_data):
@@ -69,7 +86,14 @@ class NotificationConsumer(WebsocketConsumer):
             if msg['type'] == 'notif' and self.scope['user'].is_superuser:  # DEBUG notifs
                 send_notification(msg['user_pk'], msg['text'], level=getattr(msg, 'level', 'info'))
             elif msg['type'] == 'join-room':
-                self.room = get_room_name(msg['object_cls'], msg['object_pk'])
+                cls, pk = msg.get('object_cls'), msg.get('object_pk')
+                if not can_join_room(self.scope['user'], cls, pk):
+                    logger.warning(
+                        "user %s denied join-room %s-%s",
+                        self.scope['user'].pk, cls, pk)
+                    return
+                self.room = get_room_name(cls, pk)
+                self.rooms.add(self.room)
                 async_to_sync(self.channel_layer.group_add)(
                     self.room,
                     self.channel_name)
