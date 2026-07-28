@@ -13,6 +13,7 @@ from django.utils.translation import gettext as _
 
 from core.forms import RegionTypesFormMixin
 from core.models import DocumentPart, Transcription
+from imports import fetch
 from imports.export import ALTO_FORMAT, ENABLED_EXPORTERS
 from imports.models import DocumentImport
 from imports.parsers import ParseError, make_parser
@@ -22,7 +23,7 @@ from users.consumers import send_event
 
 def clean_uri(uri, document, tempfile):
     try:
-        resp = requests.get(uri)
+        resp = fetch.get(uri)
         content = resp.content
         buf = io.BytesIO(content)
         buf.name = tempfile
@@ -34,6 +35,8 @@ def clean_uri(uri, document, tempfile):
         raise forms.ValidationError(_("The document is unreachable, unreadable or the host timed out."))
     except json.decoder.JSONDecodeError:
         raise forms.ValidationError(_("The document pointed to by the given uri doesn't seem to be valid json."))
+    except fetch.UnsafeUriError as e:
+        raise forms.ValidationError(e.args[0])
     except ParseError as e:
         msg = _("Couldn't parse the given file or its validation failed")
         if len(e.args):
