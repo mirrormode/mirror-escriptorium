@@ -152,6 +152,19 @@ class ProjectSerializer(serializers.ModelSerializer):
         model = Project
         fields = '__all__'
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # ProjectTag is per user, so the field is narrowed to the caller's
+        # own. Falls back to none() rather than the declared all() when built
+        # without a context, so a missing context can only ever narrow.
+        request = (self.context.get("request")
+                   or getattr(self.context.get("view"), "request", None))
+        user = getattr(request, "user", None)
+        narrow_related(self.fields['tags'],
+                       ProjectTag.objects.filter(user=user)
+                       if user is not None and user.is_authenticated
+                       else ProjectTag.objects.none())
+
     def create(self, data):
         data['owner'] = self.context["view"].request.user
         obj = super().create(data)
@@ -443,7 +456,12 @@ class DocumentSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['project'].queryset = Project.objects.for_user_write(self.context['user'])
+        user = self.context['user']
+        self.fields['project'].queryset = Project.objects.for_user_write(user)
+        # DocumentTag is scoped to a project, so the field is narrowed to
+        # the tags of the projects the caller may write to
+        narrow_related(self.fields['tags'], DocumentTag.objects.filter(
+            project__in=Project.objects.for_user_write(user)))
 
     def validate_main_script(self, value):
         try:
@@ -912,7 +930,9 @@ class SegmentSerializer(ProcessSerializerMixin, serializers.Serializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['model'].queryset = OcrModel.objects.filter(job=OcrModel.MODEL_JOB_SEGMENT)
+        self.fields['model'].queryset = OcrModel.objects.filter(
+            job=OcrModel.MODEL_JOB_SEGMENT
+        ).for_user_read(self.user)
         narrow_related(self.fields['parts'],
                        DocumentPart.objects.filter(document=self.document))
 
@@ -1232,7 +1252,8 @@ class TranscribeSerializer(ProcessSerializerMixin, serializers.Serializer):
         self.fields['transcription'].queryset = Transcription.objects.filter(
             document=self.document)
         self.fields['model'].queryset = OcrModel.objects.filter(
-            job=OcrModel.MODEL_JOB_RECOGNIZE)
+            job=OcrModel.MODEL_JOB_RECOGNIZE
+        ).for_user_read(self.user)
         narrow_related(self.fields['parts'],
                        DocumentPart.objects.filter(document=self.document))
 
@@ -1503,6 +1524,41 @@ class VirtualCollectionSerializer(serializers.ModelSerializer):
             "updated_at",
             "items_to_save",
         ]
+
+    def validate_items_to_save(self, items):
+        """Check every pk in the payload against what the user may read.
+
+        items_to_save is a list of raw pks written straight to the database,
+        so each one is validated here before it is stored.
+        """
+        if not items:
+            return items
+
+        user = getattr(self.context.get("request"), "user", None)
+        readable = DocumentPart.objects.filter(
+            document__in=Document.objects.for_user(user))
+        parts = {p.pk: p for p in readable.filter(
+            pk__in={item.get("document_part") for item in items})}
+
+        layers = dict(
+            Transcription.objects
+            .filter(pk__in={item.get("transcription_layer") for item in items},
+                    document__in={p.document_id for p in parts.values()})
+            .values_list("pk", "document_id"))
+
+        for item in items:
+            part = parts.get(item.get("document_part"))
+            if part is None:
+                raise serializers.ValidationError(
+                    _("Invalid document_part: %(pk)s.")
+                    % {"pk": item.get("document_part")})
+            # the layer has to belong to the same document as the part
+            if layers.get(item.get("transcription_layer")) != part.document_id:
+                raise serializers.ValidationError(
+                    _("Invalid transcription_layer: %(pk)s.")
+                    % {"pk": item.get("transcription_layer")})
+
+        return items
 
     def create(self, validated_data):
         items_to_save = validated_data.pop("items_to_save", [])
