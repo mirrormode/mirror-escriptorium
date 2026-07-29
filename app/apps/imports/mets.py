@@ -9,8 +9,6 @@ import requests
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 from lxml import html
-
-from imports import fetch
 from PIL import Image
 
 from imports import fetch
