@@ -3,6 +3,7 @@ from io import BytesIO
 from unittest.mock import Mock, patch
 from zipfile import ZipFile
 
+from django.test import SimpleTestCase, override_settings
 from lxml import etree
 from requests.exceptions import RequestException
 
@@ -14,8 +15,6 @@ from core.models import (
     LineTranscription,
     Metadata,
 )
-from django.test import SimpleTestCase, override_settings
-
 from core.tests.factory import CoreFactoryTestCase
 from imports.parsers import (
     DownloadError,
