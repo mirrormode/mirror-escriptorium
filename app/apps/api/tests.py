@@ -16,7 +16,6 @@ from core.models import (
     Block,
     Document,
     DocumentMetadata,
-    DocumentPart,
     DocumentTag,
     Line,
     LineTranscription,
