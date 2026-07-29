@@ -128,6 +128,19 @@ class ProjectSerializer(serializers.ModelSerializer):
         model = Project
         fields = '__all__'
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # ProjectTag is per user, so the field is narrowed to the caller's
+        # own. Falls back to none() rather than the declared all() when built
+        # without a context, so a missing context can only ever narrow.
+        request = (self.context.get("request")
+                   or getattr(self.context.get("view"), "request", None))
+        user = getattr(request, "user", None)
+        narrow_related(self.fields['tags'],
+                       ProjectTag.objects.filter(user=user)
+                       if user is not None and user.is_authenticated
+                       else ProjectTag.objects.none())
+
     def create(self, data):
         data['owner'] = self.context["view"].request.user
         obj = super().create(data)
@@ -356,7 +369,12 @@ class DocumentSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['project'].queryset = Project.objects.for_user_write(self.context['user'])
+        user = self.context['user']
+        self.fields['project'].queryset = Project.objects.for_user_write(user)
+        # DocumentTag is scoped to a project, so the field is narrowed to
+        # the tags of the projects the caller may write to
+        narrow_related(self.fields['tags'], DocumentTag.objects.filter(
+            project__in=Project.objects.for_user_write(user)))
 
     def get_parts_count(self, document):
         return document.parts.count()
@@ -723,7 +741,9 @@ class SegmentSerializer(ProcessSerializerMixin, serializers.Serializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['model'].queryset = OcrModel.objects.filter(job=OcrModel.MODEL_JOB_SEGMENT)
+        self.fields['model'].queryset = OcrModel.objects.filter(
+            job=OcrModel.MODEL_JOB_SEGMENT
+        ).for_user_read(self.user)
         narrow_related(self.fields['parts'],
                        DocumentPart.objects.filter(document=self.document))
 
@@ -902,7 +922,8 @@ class TranscribeSerializer(ProcessSerializerMixin, serializers.Serializer):
         self.fields['transcription'].queryset = Transcription.objects.filter(
             document=self.document)
         self.fields['model'].queryset = OcrModel.objects.filter(
-            job=OcrModel.MODEL_JOB_RECOGNIZE)
+            job=OcrModel.MODEL_JOB_RECOGNIZE
+        ).for_user_read(self.user)
         narrow_related(self.fields['parts'],
                        DocumentPart.objects.filter(document=self.document))
 
