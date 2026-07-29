@@ -46,6 +46,15 @@ from users.models import Group, User
 logger = logging.getLogger(__name__)
 
 
+def narrow_related(field, queryset):
+    """Restrict the objects a related field accepts, many=True included.
+
+    A many=True field is a ManyRelatedField wrapper and DRF resolves each pk
+    through its child_relation, so the queryset has to be assigned there.
+    """
+    getattr(field, 'child_relation', field).queryset = queryset
+
+
 class ImageField(serializers.ImageField):
     def __init__(self, *args, thumbnails=None, **kwargs):
         self.thumbnails = thumbnails
@@ -715,7 +724,8 @@ class SegmentSerializer(ProcessSerializerMixin, serializers.Serializer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['model'].queryset = OcrModel.objects.filter(job=OcrModel.MODEL_JOB_SEGMENT)
-        self.fields['parts'].queryset = DocumentPart.objects.filter(document=self.document)
+        narrow_related(self.fields['parts'],
+                       DocumentPart.objects.filter(document=self.document))
 
     def process(self):
         model = self.validated_data.get('model')
@@ -756,7 +766,8 @@ class SegTrainSerializer(ProcessSerializerMixin, serializers.Serializer):
         ).filter(
             Q(public=True) | Q(owner=self.user)
         )
-        self.fields['parts'].queryset = DocumentPart.objects.filter(document=self.document)
+        narrow_related(self.fields['parts'],
+                       DocumentPart.objects.filter(document=self.document))
 
     def validate_parts(self, data):
         if len(data) < 2:
@@ -829,7 +840,8 @@ class TrainSerializer(ProcessSerializerMixin, serializers.Serializer):
         ).filter(
             Q(public=True) | Q(owner=self.user)
         )
-        self.fields['parts'].queryset = DocumentPart.objects.filter(document=self.document)
+        narrow_related(self.fields['parts'],
+                       DocumentPart.objects.filter(document=self.document))
 
     def validate(self, data):
         data = super().validate(data)
@@ -891,8 +903,8 @@ class TranscribeSerializer(ProcessSerializerMixin, serializers.Serializer):
             document=self.document)
         self.fields['model'].queryset = OcrModel.objects.filter(
             job=OcrModel.MODEL_JOB_RECOGNIZE)
-        self.fields['parts'].queryset = DocumentPart.objects.filter(
-            document=self.document)
+        narrow_related(self.fields['parts'],
+                       DocumentPart.objects.filter(document=self.document))
 
     def process(self):
         model = self.validated_data.get('model')

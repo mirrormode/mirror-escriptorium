@@ -1273,3 +1273,62 @@ class DocumentPartMetadataTestCase(CoreFactoryTestCase):
             resp = self.client.delete(uri)
         self.assertEqual(resp.status_code, 204, resp.content)
         self.assertEqual(self.part.metadata.count(), 0)
+
+
+class RelatedFieldNarrowingTestCase(CoreFactoryTestCase):
+    """
+    Narrowing a many=True related field has to reach its child_relation:
+    that is where DRF resolves each pk.
+
+    Note the fixture: factory.make_project() get_or_creates on the slug, so
+    calling it without a name hands every document to one shared project,
+    whose owner then has legitimate rights over the other tenant. Both get
+    an explicitly named project.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.owner = self.factory.make_user()
+        my_doc = self.factory.make_document(
+            owner=self.owner,
+            project=self.factory.make_project(name='my project',
+                                              owner=self.owner))
+        self.mine = self.factory.make_part(document=my_doc)
+
+        other = self.factory.make_user()
+        other_doc = self.factory.make_document(
+            owner=other,
+            project=self.factory.make_project(name='other project',
+                                              owner=other))
+        self.theirs = self.factory.make_part(document=other_doc)
+
+        self.assertNotIn(other_doc, Document.objects.for_user(self.owner))
+
+        self.model = self.factory.make_model(my_doc,
+                                             job=OcrModel.MODEL_JOB_SEGMENT)
+        self.client.force_login(self.owner)
+        self.uri = reverse('api:document-segment',
+                           kwargs={'pk': my_doc.pk})
+
+    @patch('api.serializers.segment')
+    def test_segment_only_accepts_parts_of_its_document(self, mock_segment):
+        # the task is only ever handed parts of the document in the URL
+        resp = self.client.post(self.uri, data={
+            'parts': [self.theirs.pk],
+            'model': self.model.pk,
+            'steps': 'both',
+        })
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertFalse(mock_segment.si.called)
+
+    @patch('core.models.chain')
+    @patch('api.serializers.segment')
+    def test_segment_accepts_its_own_parts(self, mock_segment, mock_chain):
+        resp = self.client.post(self.uri, data={
+            'parts': [self.mine.pk],
+            'model': self.model.pk,
+            'steps': 'both',
+        })
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(mock_segment.si.call_args.kwargs['instance_pk'],
+                         self.mine.pk)
