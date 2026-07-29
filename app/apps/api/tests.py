@@ -26,7 +26,6 @@ from core.models import (
     ProjectTag,
     TextualWitness,
     Transcription,
-    VirtualCollection,
 )
 from core.tests.factory import CoreFactoryTestCase
 from reporting.models import TaskGroup, TaskReport
@@ -1558,8 +1557,9 @@ class RelatedFieldNarrowingTestCase(CoreFactoryTestCase):
             'steps': 'both',
         })
         self.assertEqual(resp.status_code, 200, resp.content)
-        self.assertEqual(mock_segment.si.call_args.kwargs['instance_pks'],
-                         [self.mine.pk])
+        # segment is enqueued per part on this branch, not batched
+        self.assertEqual(mock_segment.si.call_args.kwargs['instance_pk'],
+                         self.mine.pk)
 
 
 class PkScopingTestCase(CoreFactoryTestCase):
@@ -1667,24 +1667,6 @@ class PkScopingTestCase(CoreFactoryTestCase):
         self.assertEqual(resp.status_code, 400, resp.content)
         self.assertEqual(
             LineTranscription.objects.filter(line=self.other_line2).count(), 0)
-
-    def test_collection_rejects_foreign_parts(self):
-        resp = self.client.post(
-            reverse('api:virtualcollection-list'),
-            data={'name': 'mine', 'items_to_save': [
-                {'document_part': self.theirs.pk,
-                 'transcription_layer': self.theirs.document.transcriptions.first().pk}]},
-            content_type='application/json')
-        self.assertEqual(resp.status_code, 400, resp.content)
-
-    def test_collection_accepts_own_parts(self):
-        resp = self.client.post(
-            reverse('api:virtualcollection-list'),
-            data={'name': 'mine', 'items_to_save': [
-                {'document_part': self.mine.pk,
-                 'transcription_layer': self.mine.document.transcriptions.first().pk}]},
-            content_type='application/json')
-        self.assertEqual(resp.status_code, 201, resp.content)
 
     def _another_users_model(self, job):
         model = self.factory.make_model(self.theirs.document, job=job)
@@ -1869,14 +1851,12 @@ class ObjectAuthorisationTestCase(CoreFactoryTestCase):
     # --- the neighbouring viewsets scope by owner; assert that holds ---------
 
     def test_owner_scoped_viewsets_hide_other_users_objects(self):
-        collection = VirtualCollection.objects.create(name='theirs',
-                                                      owner=self.other)
+        # no VirtualCollection on this branch
         witness = TextualWitness.objects.create(name='theirs', owner=self.other)
         report = TaskReport.objects.create(user=self.other,
                                            document=self.other_doc,
                                            label='theirs')
-        for name, pk in [('api:virtualcollection-detail', collection.pk),
-                         ('api:textualwitness-detail', witness.pk),
+        for name, pk in [('api:textualwitness-detail', witness.pk),
                          ('api:taskreport-detail', report.pk)]:
             resp = self.client.get(reverse(name, kwargs={'pk': pk}))
             self.assertEqual(resp.status_code, 404,
