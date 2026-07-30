@@ -1556,9 +1556,8 @@ class RelatedFieldNarrowingTestCase(CoreFactoryTestCase):
             'steps': 'both',
         })
         self.assertEqual(resp.status_code, 200, resp.content)
-        # segment is enqueued per part on this branch, not batched
-        self.assertEqual(mock_segment.si.call_args.kwargs['instance_pk'],
-                         self.mine.pk)
+        self.assertEqual(mock_segment.si.call_args.kwargs['instance_pks'],
+                         [self.mine.pk])
 
 
 class PkScopingTestCase(CoreFactoryTestCase):
