@@ -105,10 +105,16 @@ build:
   image: docker:24.0.7
   rules:
     # skip when building gitlab pages
-    - if: '$LANDING == null'
+    - if: '$LANDING != null'
+      when: never
+    # images are built on the privileged runner, which only takes protected branches and tags
+    - if: '$CI_COMMIT_REF_PROTECTED == "true"'
       when: on_success
     - when: never
 
+  # Docker-in-Docker needs a privileged runner
+  tags:
+    - docker
   services:
     - docker:24.0.7-dind
   variables:
@@ -120,7 +126,10 @@ docker-build-app:
   extends: .docker-build
   rules:
     # skip when building gitlab pages
-    - if: '$LANDING == null'
+    - if: '$LANDING != null'
+      when: never
+    # images are built on the privileged runner, which only takes protected branches and tags
+    - if: '$CI_COMMIT_REF_PROTECTED == "true"'
       when: on_success
     - when: never
   script:
@@ -130,7 +139,10 @@ docker-build-exim:
   extends: .docker-build
   rules:
     # skip when building gitlab pages
-    - if: '$LANDING == null'
+    - if: '$LANDING != null'
+      when: never
+    # images are built on the privileged runner, which only takes protected branches and tags
+    - if: '$CI_COMMIT_REF_PROTECTED == "true"'
       when: on_success
     - when: never
   script:
@@ -140,7 +152,10 @@ docker-build-nginx:
   extends: .docker-build
   rules:
     # skip when building gitlab pages
-    - if: '$LANDING == null'
+    - if: '$LANDING != null'
+      when: never
+    # images are built on the privileged runner, which only takes protected branches and tags
+    - if: '$CI_COMMIT_REF_PROTECTED == "true"'
       when: on_success
     - when: never
   script:
@@ -150,7 +165,7 @@ docker-build-base:
   extends: .docker-build
   # Run this only on base tags
   rules:
-    - if: '$CI_COMMIT_TAG =~ /^base-.*/'
+    - if: '$CI_COMMIT_TAG =~ /^base-.*/ && $CI_COMMIT_REF_PROTECTED == "true"'
       when: on_success
     - when: never
 
