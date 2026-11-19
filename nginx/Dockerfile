@@ -1,4 +1,4 @@
-FROM nginx:1.26.1-alpine
+FROM nginx:1.30.7-alpine
 
 # needed by the container healthcheck
 RUN apk add --no-cache curl
