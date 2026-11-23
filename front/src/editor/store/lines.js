@@ -175,6 +175,7 @@ export const actions = {
                 pk: l.pk,
                 document_part: rootState.parts.pk,
                 baseline: l.baseline,
+                mask: l.mask,
                 region: l.region,
                 typology: (type && type.pk) || null,
                 transcriptions: l.transcriptions,
