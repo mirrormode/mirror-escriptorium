@@ -177,6 +177,7 @@ export const actions = {
                 baseline: l.baseline,
                 region: l.region,
                 typology: (type && type.pk) || null,
+                transcriptions: l.transcriptions,
             };
         });
 
